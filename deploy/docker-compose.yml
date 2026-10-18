@@ -1,0 +1,114 @@
+name: rideflow
+
+# Values come from .env (copy .env.example). Defaults after ":-" let `docker compose up`
+# work on a fresh clone without a .env file.
+#
+# Chay tu thu muc goc repo:
+#   docker compose -f deploy/docker-compose.yml --env-file .env up --build
+#
+# Quy uoc khi them service (chu file: TV3 - moi thay doi phai qua review):
+#   - Ten service = hostname de goi nhau (vd http://trip-service:8080). Moi service lang nghe 8080 trong container.
+#   - Moi service co DB rieng <ten>-db (postgres:16-alpine) kem healthcheck pg_isready.
+#   - Service depends_on DB cua minh + rabbitmq voi condition: service_healthy.
+#   - Java: SPRING_DATASOURCE_*, SPRING_RABBITMQ_*. Node (TV2): DATABASE_URL, RABBITMQ_URL.
+#   - Mat khau doc tu .env dang ${X_DB_PASSWORD:-mac_dinh}; them bien vao .env.example.
+#   - Chi sua block cua minh. build dung duong dan ../<ten-service>.
+#
+# Bang cong (host):
+#   service          port   db port
+#   api-gateway      8080   -
+#   user-service     8081   5433
+#   driver-service   8082   5434
+#   trip-service     8083   5435
+#   matching-service 8084   5436
+#   payment-service  8085   5437
+#   notification     8086   5438
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rideflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rideflow_pass}
+    ports:
+      - "5672:5672"
+      - "15672:15672" # management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Payment ----------
+  payment-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: payment_svc
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_pass}
+    ports:
+      - "5437:5432"
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment_svc -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  payment-service:
+    build: ../payment-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://payment-db:5432/payment_db
+      SPRING_DATASOURCE_USERNAME: payment_svc
+      SPRING_DATASOURCE_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_pass}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-rideflow}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rideflow_pass}
+    ports:
+      - "8085:8080"
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ---------- Notification ----------
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: notification_svc
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_pass}
+    ports:
+      - "5438:5432"
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_svc -d notification_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  notification-service:
+    build: ../notification-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://notification-db:5432/notification_db
+      SPRING_DATASOURCE_USERNAME: notification_svc
+      SPRING_DATASOURCE_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_pass}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-rideflow}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rideflow_pass}
+    ports:
+      - "8086:8080"
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  payment-db-data:
+  notification-db-data:

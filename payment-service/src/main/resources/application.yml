@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: payment-service
+
+  # Defaults are for running locally against `docker compose -f deploy/docker-compose.yml up payment-db rabbitmq`.
+  # Inside docker-compose these are overridden by environment variables.
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5437/payment_db}
+    username: ${SPRING_DATASOURCE_USERNAME:payment_svc}
+    password: ${SPRING_DATASOURCE_PASSWORD:payment_pass}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:rideflow}
+    password: ${SPRING_RABBITMQ_PASSWORD:rideflow_pass}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # Shows db + rabbit status at /actuator/health
+      show-components: always

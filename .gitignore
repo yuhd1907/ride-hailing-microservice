@@ -1,0 +1,20 @@
+# Secrets
+.env
+
+# IDE
+.idea/
+*.iml
+.vscode/
+out/
+
+# Build output
+.gradle/
+build/
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
