@@ -1,0 +1,131 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: api-gateway
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  cloud:
+    gateway:
+      # Giới hạn kích thước payload tối đa 2MB
+      httpclient:
+        response-timeout: 10s
+      default-filters:
+        - name: RequestSize
+          args:
+            maxSize: 2MB
+      discovery:
+        locator:
+          enabled: false
+          lower-case-service-id: true
+      routes:
+        - id: user-ping-route
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/users/ping
+          filters:
+            - SetPath=/ping
+
+        - id: driver-ping-route
+          uri: lb://DRIVER-SERVICE
+          predicates:
+            - Path=/drivers/ping
+          filters:
+            - SetPath=/ping
+
+        # === User Service Routes ===
+        - id: user-auth-route
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/auth/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        - id: user-service-route
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/users/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        # === Driver Service Routes (Public) ===
+        - id: driver-service-route
+          uri: lb://DRIVER-SERVICE
+          predicates:
+            - Path=/drivers/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: "#{@ipKeyResolver}"
+
+        # === Driver Service Routes (Internal - chỉ cho service-to-service) ===
+        - id: driver-internal-route
+          uri: lb://DRIVER-SERVICE
+          predicates:
+            - Path=/internal/drivers/**
+
+        # === Trip Service Route (Điểm cắm cho TV2/TV3) ===
+        - id: trip-service-route
+          uri: lb://TRIP-SERVICE
+          predicates:
+            - Path=/trips/**
+
+        - id: matching-service-route
+          uri: lb://MATCHING-SERVICE
+          predicates:
+            - Path=/matching/**
+
+        - id: payment-service-route
+          uri: lb://PAYMENT-SERVICE
+          predicates:
+            - Path=/payments/**
+
+        - id: notification-service-route
+          uri: lb://NOTIFICATION-SERVICE
+          predicates:
+            - Path=/notifications/**
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:mySecretKeyForJwtTokenGenerationRideHailingApp2024VeryLongSecretKey}
+
+# Eureka Client
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
+    registry-fetch-interval-seconds: 5
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 10
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, gateway
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    com.ridehail.gateway: DEBUG
