@@ -1,0 +1,98 @@
+services:
+  postgres-trip:
+    image: postgres:16-alpine
+    container_name: postgres-trip
+    environment:
+      POSTGRES_DB: trip_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - trip-postgres-data:/var/lib/postgresql/data
+      - ./trip_db.sql:/docker-entrypoint-initdb.d/01-trip-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d trip_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  postgres-matching:
+    image: postgres:16-alpine
+    container_name: postgres-matching
+    environment:
+      POSTGRES_DB: matching_db
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - matching-postgres-data:/var/lib/postgresql/data
+      - ./matching_db.sql:/docker-entrypoint-initdb.d/01-matching-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d matching_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app_password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  trip-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_ENTRY: trip-service/server.js
+    environment:
+      DATABASE_URL: postgres://app:app_password@postgres-trip:5432/trip_db
+      RABBITMQ_URL: amqp://app:app_password@rabbitmq:5672
+      TRIP_SERVICE_PORT: 8083
+      NODE_ENV: production
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres-trip:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  matching-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_ENTRY: matching-service/server.js
+    environment:
+      DATABASE_URL: postgres://app:app_password@postgres-matching:5432/matching_db
+      RABBITMQ_URL: amqp://app:app_password@rabbitmq:5672
+      MATCHING_SERVICE_PORT: 8084
+      NODE_ENV: production
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres-matching:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  trip-postgres-data:
+  matching-postgres-data:
