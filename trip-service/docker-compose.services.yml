@@ -1,16 +1,14 @@
 services:
   postgres-trip:
     image: postgres:16-alpine
-    container_name: postgres-trip
     environment:
       POSTGRES_DB: trip_db
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app_password
-    ports:
-      - "5433:5432"
+    ports: ["5435:5432"]
     volumes:
       - trip-postgres-data:/var/lib/postgresql/data
-      - ./trip_db.sql:/docker-entrypoint-initdb.d/01-trip-schema.sql:ro
+      - ./trip-service/trip_db.sql:/docker-entrypoint-initdb.d/01-trip-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d trip_db"]
       interval: 5s
@@ -20,16 +18,14 @@ services:
 
   postgres-matching:
     image: postgres:16-alpine
-    container_name: postgres-matching
     environment:
       POSTGRES_DB: matching_db
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app_password
-    ports:
-      - "5434:5432"
+    ports: ["5436:5432"]
     volumes:
       - matching-postgres-data:/var/lib/postgresql/data
-      - ./matching_db.sql:/docker-entrypoint-initdb.d/01-matching-schema.sql:ro
+      - ./matching-service/matching_db.sql:/docker-entrypoint-initdb.d/01-matching-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d matching_db"]
       interval: 5s
@@ -39,13 +35,11 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: app
-      RABBITMQ_DEFAULT_PASS: app_password
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit loopback_users []"
+    ports: ["5672:5672", "15672:15672"]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -54,43 +48,31 @@ services:
     restart: unless-stopped
 
   trip-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        SERVICE_ENTRY: trip-service/server.js
+    build: ./trip-service
     environment:
       DATABASE_URL: postgres://app:app_password@postgres-trip:5432/trip_db
-      RABBITMQ_URL: amqp://app:app_password@rabbitmq:5672
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       TRIP_SERVICE_PORT: 8083
+      EUREKA_HOST: eureka-server
       NODE_ENV: production
-    ports:
-      - "8083:8083"
+    ports: ["8083:8083"]
     depends_on:
-      postgres-trip:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      postgres-trip: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
     restart: unless-stopped
 
   matching-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        SERVICE_ENTRY: matching-service/server.js
+    build: ./matching-service
     environment:
       DATABASE_URL: postgres://app:app_password@postgres-matching:5432/matching_db
-      RABBITMQ_URL: amqp://app:app_password@rabbitmq:5672
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       MATCHING_SERVICE_PORT: 8084
+      EUREKA_HOST: eureka-server
       NODE_ENV: production
-    ports:
-      - "8084:8084"
+    ports: ["8084:8084"]
     depends_on:
-      postgres-matching:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      postgres-matching: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
     restart: unless-stopped
 
 volumes:
