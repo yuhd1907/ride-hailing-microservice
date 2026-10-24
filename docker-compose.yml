@@ -1,7 +1,7 @@
 name: ride-hailing-microservice
 
 x-postgres: &postgres
-  image: postgres:15-alpine
+  image: postgres:16-alpine
   restart: unless-stopped
   networks:
     - ride-hailing-net
@@ -142,7 +142,7 @@ services:
       SERVER_PORT: 8080
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka_server:8761/eureka/
       SPRING_DATA_REDIS_HOST: redis
-      JWT_SECRET: ${JWT_SECRET:-mySecretKeyForJwtTokenGenerationRideHailingApp2024VeryLongSecretKey}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
     depends_on:
       eureka_server:
         condition: service_healthy
@@ -169,7 +169,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${USER_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:-postgres_password}
       SPRING_DATA_REDIS_HOST: redis
-      JWT_SECRET: ${JWT_SECRET:-mySecretKeyForJwtTokenGenerationRideHailingApp2024VeryLongSecretKey}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-3600000}
     depends_on:
       eureka_server:
