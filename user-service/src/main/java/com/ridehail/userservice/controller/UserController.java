@@ -1,5 +1,7 @@
 package com.ridehail.userservice.controller;
 
+import java.util.UUID;
+
 import jakarta.validation.Valid;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
@@ -35,11 +37,10 @@ public class UserController {
      * Gateway inject)
      */
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> getMyProfile(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
+    public ResponseEntity<UserResponse> getMyProfile(@RequestHeader(value = "X-User-Id", required = false) UUID userId,
             @RequestHeader(value = "X-User-Email", required = false) String email) {
 
-        if (userId != null && !userId.isBlank()) {
+        if (userId != null) {
             UserResponse response = userService.getUserById(userId);
             return ResponseEntity.ok(response);
         }
@@ -55,7 +56,7 @@ public class UserController {
      * GET /users/{id} - Lấy thông tin user theo ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponse> getUserById(@PathVariable String id) {
+    public ResponseEntity<UserResponse> getUserById(@PathVariable UUID id) {
 
         UserResponse response = userService.getUserById(id);
         return ResponseEntity.ok(response);
@@ -65,10 +66,10 @@ public class UserController {
      * PUT /users/{id} - Cập nhật hồ sơ cá nhân
      */
     @PutMapping("/{id}")
-    public ResponseEntity<UserResponse> updateProfile(@PathVariable String id,
-            @RequestHeader(value = "X-User-Id", required = false) String requesterId,
+    public ResponseEntity<UserResponse> updateProfile(@PathVariable UUID id,
+            @RequestHeader(value = "X-User-Id", required = false) UUID requesterId,
             @Valid @RequestBody UpdateProfileRequest request) {
-        if (requesterId == null || requesterId.isBlank()) {
+        if (requesterId == null) {
             throw new UnauthorizedException("Không có thông tin xác thực người dùng");
         }
         if (!id.equals(requesterId)) {

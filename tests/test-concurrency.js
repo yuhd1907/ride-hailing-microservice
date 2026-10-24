@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 
 async function request(url, method = 'GET', body) {
     const response = await fetch(url, {
@@ -18,7 +19,7 @@ async function request(url, method = 'GET', body) {
 
 const first = process.env.DRIVER_SERVICE_URL_1 || 'http://localhost:8082';
 const second = process.env.DRIVER_SERVICE_URL_2 || 'http://localhost:18082';
-const driverId = process.env.TEST_DRIVER_ID || 'drv_target_01';
+const driverId = process.env.TEST_DRIVER_ID || 'fd699acc-6544-44a9-9634-5396060c61b8';
 
 async function main() {
     const current = await request(`${first}/drivers/${driverId}`);
@@ -28,12 +29,11 @@ async function main() {
     } else {
         assert.equal(current.data.status, 'AVAILABLE', 'Use an AVAILABLE demo driver, not a driver handling another trip');
     }
-    const suffix = Date.now();
-    const reservations = [`rsv_verify_${suffix}_1`, `rsv_verify_${suffix}_2`];
+    const reservations = [randomUUID(), randomUUID()];
     try {
         const results = await Promise.all([first, second].map((base, index) =>
             request(`${base}/internal/drivers/${driverId}/reserve`, 'POST', {
-                tripId: `trip_verify_${suffix}_${index + 1}`, reservationId: reservations[index]
+                tripId: randomUUID(), reservationId: reservations[index]
             })));
         console.table(results.map(result => ({ status: result.status, instance: result.instance })));
         assert.deepEqual(results.map(result => result.status).sort(), [200, 409],

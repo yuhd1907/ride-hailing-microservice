@@ -10,10 +10,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-/** Run with Java 17+: java scripts/VerifyCore.java */
+/** Run with Java 17+: java tests/VerifyCore.java */
 public class VerifyCore {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10)).build();
@@ -53,8 +54,12 @@ public class VerifyCore {
         require(sql("driver_postgres", "SELECT count(*) FROM flyway_schema_history WHERE version IN ('1','2') AND success").equals("2"), "Driver migrations missing");
         pass("Driver migrations created drivers and driver_locations in driver_db");
 
+        require(sql("user_postgres", "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND data_type = 'uuid' AND (table_name, column_name) IN (('users', 'id'), ('user_roles', 'user_id'))").equals("2"), "User IDs must use native UUID columns");
+        require(sql("driver_postgres", "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND data_type = 'uuid' AND (table_name, column_name) IN (('drivers', 'id'), ('drivers', 'current_trip_id'), ('drivers', 'reservation_id'), ('driver_locations', 'driver_id'))").equals("4"), "Driver IDs must use native UUID columns");
+        pass("All domain ID columns use PostgreSQL UUID");
+
         String suffix = Long.toString(System.currentTimeMillis());
-        String id = "drv_verify_" + suffix;
+        String id = UUID.randomUUID().toString();
         String phone = "09" + suffix.substring(suffix.length() - 8);
         String userId = null;
         try {
@@ -63,10 +68,11 @@ public class VerifyCore {
             HttpResponse<String> registered = request("POST", GATEWAY + "/auth/register",
                     "{\"email\":\"" + email + "\",\"password\":\"Password@123\",\"fullName\":\"Verification User\",\"phone\":\"" + userPhone + "\",\"role\":\"ROLE_DRIVER\"}");
             require(registered.statusCode() == 201, "Fixture registration failed: " + registered.statusCode());
-            userId = jsonString(registered.body(), "id");
+            userId = UUID.fromString(jsonString(registered.body(), "id")).toString();
             HttpResponse<String> login = request("POST", GATEWAY + "/auth/login",
                     "{\"email\":\"" + email + "\",\"password\":\"Password@123\"}");
             require(login.statusCode() == 200, "Fixture login failed");
+            require(userId.equals(UUID.fromString(jsonString(login.body(), "userId")).toString()), "Login must return the registered UUID");
             token = jsonString(login.body(), "token");
             pass("Registration and login issue a usable JWT");
             sql("driver_postgres", "INSERT INTO drivers (id, full_name, phone, license_plate, vehicle_type, status) VALUES ('" + id + "', 'Verification fixture', '" + phone + "', 'TEST-" + suffix + "', 'MOTORCYCLE', 'AVAILABLE')");
@@ -83,7 +89,19 @@ public class VerifyCore {
             require(sql("driver_postgres", "SELECT latitude FROM driver_locations WHERE driver_id = '" + id + "'").equals("21.029"), "Invalid request changed the location");
             pass("Invalid coordinates return 400 without changing stored location");
 
-            String missing = "missing_" + suffix;
+            require(request("GET", DRIVER + "/drivers/not-a-uuid", null).statusCode() == 400, "Malformed driver UUID must return 400");
+            require(request("GET", USER + "/users/not-a-uuid", null).statusCode() == 400, "Malformed user UUID must return 400");
+            String tripId = UUID.randomUUID().toString();
+            String reservationId = UUID.randomUUID().toString();
+            HttpResponse<String> reserved = request("POST", DRIVER + "/internal/drivers/" + id + "/reserve",
+                    "{\"tripId\":\"" + tripId + "\",\"reservationId\":\"" + reservationId + "\"}");
+            require(reserved.statusCode() == 200, "Reservation with UUID fields failed");
+            require(tripId.equals(jsonString(reserved.body(), "currentTripId")) && reservationId.equals(jsonString(reserved.body(), "reservationId")), "Reservation response lost its UUIDs");
+            require(sql("driver_postgres", "SELECT current_trip_id::text || '|' || reservation_id::text FROM drivers WHERE id = '" + id + "'").equals(tripId + "|" + reservationId), "Native UUID reservation fields were not persisted");
+            require(request("POST", DRIVER + "/internal/drivers/" + id + "/release", "").statusCode() == 200, "Reservation release failed");
+            pass("UUID validation and reservation round-trip preserve all domain IDs");
+
+            String missing = UUID.randomUUID().toString();
             require(request("POST", DRIVER + "/drivers/" + missing + "/location", "{\"latitude\":21,\"longitude\":105}").statusCode() == 404, "Unknown driver must return 404");
             require(sql("driver_postgres", "SELECT count(*) FROM driver_locations WHERE driver_id = '" + missing + "'").equals("0"), "Unknown driver gained a location");
             pass("Unknown driver returns 404 without inserting a location");
@@ -96,7 +114,7 @@ public class VerifyCore {
                 redis("ZREM", "driver:locations", id);
                 if (token != null) redis("DEL", "blacklist:" + token);
             } finally {
-                if (userId != null && userId.matches("usr_[a-f0-9]{32}")) {
+                if (userId != null) {
                     sql("user_postgres", "DELETE FROM users WHERE id = '" + userId + "'");
                 }
             }

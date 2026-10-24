@@ -1,6 +1,7 @@
 package com.ridehail.driverservice.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,8 +21,8 @@ import jakarta.persistence.Version;
 public class Driver {
 
     @Id
-    @Column(name = "id", length = 36, nullable = false, updatable = false)
-    private String id;
+    @Column(name = "id", nullable = false, updatable = false)
+    private UUID id;
 
     @Column(name = "full_name", length = 100, nullable = false)
     private String fullName;
@@ -39,11 +40,11 @@ public class Driver {
     @Column(name = "status", length = 20, nullable = false)
     private DriverStatus status = DriverStatus.OFFLINE;
 
-    @Column(name = "current_trip_id", length = 36)
-    private String currentTripId;
+    @Column(name = "current_trip_id")
+    private UUID currentTripId;
 
-    @Column(name = "reservation_id", length = 36)
-    private String reservationId;
+    @Column(name = "reservation_id")
+    private UUID reservationId;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -58,6 +59,9 @@ public class Driver {
     // === Lifecycle Callbacks ===
     @PrePersist
     protected void onCreate() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID();
+        }
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
@@ -72,11 +76,11 @@ public class Driver {
     }
 
     // === Getters & Setters ===
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
@@ -120,19 +124,19 @@ public class Driver {
         this.status = status;
     }
 
-    public String getCurrentTripId() {
+    public UUID getCurrentTripId() {
         return currentTripId;
     }
 
-    public void setCurrentTripId(String currentTripId) {
+    public void setCurrentTripId(UUID currentTripId) {
         this.currentTripId = currentTripId;
     }
 
-    public String getReservationId() {
+    public UUID getReservationId() {
         return reservationId;
     }
 
-    public void setReservationId(String reservationId) {
+    public void setReservationId(UUID reservationId) {
         this.reservationId = reservationId;
     }
 

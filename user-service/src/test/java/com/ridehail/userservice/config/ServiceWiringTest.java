@@ -1,6 +1,7 @@
 package com.ridehail.userservice.config;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.support.AopUtils;
@@ -44,14 +45,14 @@ class ServiceWiringTest {
         when(encoder.encode("Password@123")).thenReturn("encoded-password");
         when(repository.save(any())).thenAnswer(invocation -> {
             com.ridehail.userservice.entity.User user = invocation.getArgument(0);
-            user.setId("usr-wiring-test");
+            user.setId(UUID.fromString("ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f"));
             when(repository.findById(user.getId())).thenReturn(Optional.of(user));
             return user;
         });
 
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.setEnvironment(new MockEnvironment()
-                .withProperty("jwt.secret", "mySecretKeyForJwtTokenGenerationRideHailingApp2024VeryLongSecretKey")
+                .withProperty("jwt.secret", "test-only-jwt-signing-key-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ-abcdef")
                 .withProperty("jwt.expiration-ms", "60000"));
             context.registerBean(UserRepository.class, () -> repository);
             context.registerBean(PasswordEncoder.class, () -> encoder);
@@ -72,8 +73,10 @@ class ServiceWiringTest {
             request.setFullName("Wiring User");
             request.setPhone("0901234567");
             request.setRole("ROLE_PASSENGER");
-            assertEquals("usr-wiring-test", authService.register(request).getId());
-            assertEquals("wiring@example.com", userService.getUserById("usr-wiring-test").getEmail());
+            assertEquals(UUID.fromString("ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f"),
+                    authService.register(request).getId());
+            assertEquals("wiring@example.com",
+                    userService.getUserById(UUID.fromString("ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f")).getEmail());
             verify(transactions, times(2)).commit(any());
         }
     }

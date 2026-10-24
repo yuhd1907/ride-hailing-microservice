@@ -48,6 +48,9 @@ public class JsonLogEncoder extends EncoderBase<ILoggingEvent> {
         entry.put("level", event.getLevel().toString());
         entry.put("correlationId", mdc.getOrDefault("correlationId", "N/A"));
         entry.put("eventId", mdc.getOrDefault("eventId", "N/A"));
+        entry.put("userId", mdc.getOrDefault("userId", "N/A"));
+        entry.put("driverId", mdc.getOrDefault("driverId", "N/A"));
+        entry.put("reservationId", mdc.getOrDefault("reservationId", "N/A"));
         entry.put("tripId", mdc.getOrDefault("tripId", "N/A"));
         entry.put("action", mdc.getOrDefault("action", "N/A"));
         String message = event.getFormattedMessage();

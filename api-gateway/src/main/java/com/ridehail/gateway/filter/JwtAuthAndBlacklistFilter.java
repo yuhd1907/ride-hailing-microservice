@@ -2,6 +2,7 @@ package com.ridehail.gateway.filter;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
+import java.util.UUID;
 import javax.crypto.SecretKey;
 
 import io.jsonwebtoken.Claims;
@@ -64,6 +65,7 @@ public class JwtAuthAndBlacklistFilter implements GlobalFilter, Ordered {
             if (claims.getSubject() == null || claims.getSubject().isBlank()) {
                 return reject(sanitized, HttpStatus.UNAUTHORIZED);
             }
+            UUID.fromString(claims.getSubject());
         }
         catch (JwtException | IllegalArgumentException ex) {
             return reject(sanitized, HttpStatus.UNAUTHORIZED);

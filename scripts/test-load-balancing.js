@@ -4,7 +4,7 @@ const gateway = process.env.GATEWAY_URL || 'http://localhost:8080';
 async function main() {
     const counts = new Map();
     for (let index = 0; index < 10; index++) {
-        const response = await fetch(`${gateway}/drivers/drv_target_01`, { signal: AbortSignal.timeout(10000) });
+        const response = await fetch(`${gateway}/drivers/fd699acc-6544-44a9-9634-5396060c61b8`, { signal: AbortSignal.timeout(10000) });
         assert.equal(response.status, 200, `Request ${index + 1} did not reach Driver Service`);
         const instance = response.headers.get('X-Handled-By-Instance');
         assert.ok(instance, 'Response has no Driver instance header');

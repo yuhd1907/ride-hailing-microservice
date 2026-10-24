@@ -1,6 +1,7 @@
 package com.ridehail.userservice.dto.response;
 
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * DTO phản hồi JWT Token sau khi đăng nhập thành công
@@ -11,7 +12,7 @@ public class JwtResponse {
 
     private String type = "Bearer";
 
-    private String userId;
+    private UUID userId;
 
     private String email;
 
@@ -19,7 +20,7 @@ public class JwtResponse {
 
     private long expiresIn;
 
-    public JwtResponse(String token, String userId, String email, Set<String> roles, long expiresIn) {
+    public JwtResponse(String token, UUID userId, String email, Set<String> roles, long expiresIn) {
         this.token = token;
         this.userId = userId;
         this.email = email;
@@ -44,11 +45,11 @@ public class JwtResponse {
         this.type = type;
     }
 
-    public String getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(String userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 

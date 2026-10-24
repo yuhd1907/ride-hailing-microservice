@@ -1,6 +1,7 @@
 package com.ridehail.driverservice.config;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.support.AopUtils;
@@ -37,7 +38,7 @@ class ServiceWiringTest {
         PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any(TransactionDefinition.class))).thenReturn(new SimpleTransactionStatus());
         Driver driver = new Driver();
-        driver.setId("drv-wiring-test");
+        driver.setId(UUID.fromString("ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f"));
         driver.setStatus(DriverStatus.AVAILABLE);
         when(repository.findById(driver.getId())).thenReturn(Optional.of(driver));
 

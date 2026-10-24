@@ -1,35 +1,34 @@
 package com.ridehail.driverservice.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import java.util.UUID;
+
+import jakarta.validation.constraints.NotNull;
 
 /**
  * DTO yêu cầu giữ tài xế cho 1 chuyến xe (dùng bởi Matching Service - TV2)
  */
 public class ReserveDriverRequest {
 
-    @NotBlank(message = "tripId không được để trống")
-    @Size(max = 36, message = "tripId tối đa 36 ký tự")
-    private String tripId;
+    @NotNull(message = "tripId không được để trống")
+    private UUID tripId;
 
-    @NotBlank(message = "reservationId không được để trống")
-    @Size(max = 36, message = "reservationId tối đa 36 ký tự")
-    private String reservationId;
+    @NotNull(message = "reservationId không được để trống")
+    private UUID reservationId;
 
     // === Getters & Setters ===
-    public String getTripId() {
+    public UUID getTripId() {
         return tripId;
     }
 
-    public void setTripId(String tripId) {
+    public void setTripId(UUID tripId) {
         this.tripId = tripId;
     }
 
-    public String getReservationId() {
+    public UUID getReservationId() {
         return reservationId;
     }
 
-    public void setReservationId(String reservationId) {
+    public void setReservationId(UUID reservationId) {
         this.reservationId = reservationId;
     }
 

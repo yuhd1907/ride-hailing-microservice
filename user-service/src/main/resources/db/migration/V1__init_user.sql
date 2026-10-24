@@ -2,7 +2,7 @@
 -- Khởi tạo bảng users cho User Service
 
 CREATE TABLE IF NOT EXISTS users (
-    id              VARCHAR(36)     PRIMARY KEY,
+    id              UUID            PRIMARY KEY,
     email           VARCHAR(255)    NOT NULL UNIQUE,
     password_hash   VARCHAR(255)    NOT NULL,
     full_name       VARCHAR(100)    NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Bảng lưu roles của user (ROLE_PASSENGER, ROLE_DRIVER)
 CREATE TABLE IF NOT EXISTS user_roles (
-    user_id     VARCHAR(36)     NOT NULL,
+    user_id     UUID            NOT NULL,
     role        VARCHAR(30)     NOT NULL,
     PRIMARY KEY (user_id, role),
     CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

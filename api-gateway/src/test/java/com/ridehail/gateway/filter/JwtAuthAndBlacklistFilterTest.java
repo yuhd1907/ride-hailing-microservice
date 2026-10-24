@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 
 class JwtAuthAndBlacklistFilterTest {
 
-    private static final String SECRET = "mySecretKeyForJwtTokenGenerationRideHailingApp2024VeryLongSecretKey";
+    private static final String SECRET = "test-only-jwt-signing-key-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ-abcdef";
 
     private ReactiveStringRedisTemplate redis;
 
@@ -109,6 +109,20 @@ class JwtAuthAndBlacklistFilterTest {
     }
 
     @Test
+    void signedTokenWithANonUuidSubjectIsRejectedBeforeLookingInRedis() {
+        String token = Jwts.builder()
+            .subject("not-a-uuid")
+            .expiration(new Date(System.currentTimeMillis() + 60000))
+            .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+            .compact();
+        var exchange = authorized(token);
+        filter.filter(exchange, chain).block(Duration.ofSeconds(2));
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        assertNull(forwarded.get());
+        verifyNoInteractions(redis);
+    }
+
+    @Test
     void validTokenReplacesAllIdentityHeaders() {
         String token = token(60000);
         when(redis.hasKey("blacklist:" + token)).thenReturn(Mono.just(false));
@@ -116,7 +130,8 @@ class JwtAuthAndBlacklistFilterTest {
             .header("Authorization", "bearer " + token)
             .header("X-User-Id", "victim", "second-victim"));
         filter.filter(exchange, chain).block(Duration.ofSeconds(2));
-        assertEquals(List.of("usr_real"), forwarded.get().getRequest().getHeaders().get("X-User-Id"));
+        assertEquals(List.of("ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f"),
+                forwarded.get().getRequest().getHeaders().get("X-User-Id"));
         assertEquals("real@example.com", forwarded.get().getRequest().getHeaders().getFirst("X-User-Email"));
     }
 
@@ -147,7 +162,7 @@ class JwtAuthAndBlacklistFilterTest {
 
     private String token(long remainingMillis) {
         return Jwts.builder()
-            .subject("usr_real")
+            .subject("ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f")
             .claim("email", "real@example.com")
             .claim("roles", "ROLE_PASSENGER")
             .expiration(new Date(System.currentTimeMillis() + remainingMillis))

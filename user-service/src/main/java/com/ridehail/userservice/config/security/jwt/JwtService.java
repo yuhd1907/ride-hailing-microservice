@@ -30,13 +30,13 @@ public class JwtService {
     /**
      * Phát hành JWT Token với claims: sub (userId), email, roles
      */
-    public String generateToken(String userId, String email, Set<String> roles) {
+    public String generateToken(UUID userId, String email, Set<String> roles) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
             .id(UUID.randomUUID().toString())
-            .subject(userId)
+            .subject(userId.toString())
             .claim("email", email)
             .claim("roles", String.join(",", roles))
             .issuedAt(now)

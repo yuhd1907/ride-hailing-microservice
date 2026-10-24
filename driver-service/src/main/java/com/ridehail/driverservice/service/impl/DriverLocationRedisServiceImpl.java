@@ -2,9 +2,11 @@ package com.ridehail.driverservice.service.impl;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.data.geo.Circle;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
@@ -43,13 +45,14 @@ public class DriverLocationRedisServiceImpl implements DriverLocationRedisServic
      * <longitude> <latitude> <driverId> Độ trễ: < 1ms
      */
     @Override
-    public void updateLocation(String driverId, double latitude, double longitude) {
+    public void updateLocation(UUID driverId, double latitude, double longitude) {
+        MDC.put("driverId", driverId.toString());
         GeoValidation.coordinates(latitude, longitude);
         redisTemplate.opsForGeo()
             .add(GEO_KEY, new Point(longitude, latitude), // Redis nhận thứ tự (kinh độ,
                                                           // vĩ độ)
-                    driverId);
-        log.debug("Redis GEO: Cập nhật vị trí tài xế {} -> lat={}, lng={}", driverId, latitude, longitude);
+                    driverId.toString());
+        log.debug("Redis GEO: Cập nhật vị trí driverId={} -> lat={}, lng={}", driverId, latitude, longitude);
     }
 
     /**
@@ -72,7 +75,7 @@ public class DriverLocationRedisServiceImpl implements DriverLocationRedisServic
         List<NearbyDriverResult> nearbyDrivers = new ArrayList<>();
         if (results != null) {
             for (GeoResult<RedisGeoCommands.GeoLocation<String>> result : results) {
-                String driverId = result.getContent().getName();
+                UUID driverId = UUID.fromString(result.getContent().getName());
                 double distanceKm = result.getDistance().getValue();
                 nearbyDrivers.add(new NearbyDriverResult(driverId, distanceKm));
             }
@@ -88,9 +91,10 @@ public class DriverLocationRedisServiceImpl implements DriverLocationRedisServic
      * driver:locations <driverId>
      */
     @Override
-    public void removeDriver(String driverId) {
-        redisTemplate.opsForZSet().remove(GEO_KEY, driverId);
-        log.debug("Redis GEO: Xóa tài xế {} khỏi danh sách vị trí", driverId);
+    public void removeDriver(UUID driverId) {
+        MDC.put("driverId", driverId.toString());
+        redisTemplate.opsForZSet().remove(GEO_KEY, driverId.toString());
+        log.debug("Redis GEO: Xóa driverId={} khỏi danh sách vị trí", driverId);
     }
 
 }

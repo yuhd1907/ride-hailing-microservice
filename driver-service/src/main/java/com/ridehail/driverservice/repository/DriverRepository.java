@@ -2,6 +2,7 @@ package com.ridehail.driverservice.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,15 +21,15 @@ import com.ridehail.driverservice.entity.DriverStatus;
  * tử cho Concurrency Control
  */
 @Repository
-public interface DriverRepository extends JpaRepository<Driver, String> {
+public interface DriverRepository extends JpaRepository<Driver, UUID> {
 
     List<Driver> findByStatus(DriverStatus status);
 
-    List<Driver> findByIdInAndStatus(List<String> ids, DriverStatus status);
+    List<Driver> findByIdInAndStatus(List<UUID> ids, DriverStatus status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select driver from Driver driver where driver.id = :driverId")
-    Optional<Driver> findByIdForLocationUpdate(@Param("driverId") String driverId);
+    Optional<Driver> findByIdForLocationUpdate(@Param("driverId") UUID driverId);
 
     /**
      * ATOMIC RESERVE: Giữ tài xế nguyên tử bằng Row-Level Lock của PostgreSQL Chỉ thành
@@ -46,8 +47,8 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :driverId AND status = 'AVAILABLE'
             """, nativeQuery = true)
-    int reserveDriverAtomic(@Param("driverId") String driverId, @Param("tripId") String tripId,
-            @Param("reservationId") String reservationId);
+    int reserveDriverAtomic(@Param("driverId") UUID driverId, @Param("tripId") UUID tripId,
+            @Param("reservationId") UUID reservationId);
 
     /**
      * RELEASE: Giải phóng tài xế (Saga Compensate hoặc hủy chuyến)
@@ -63,7 +64,7 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :driverId AND status IN ('RESERVED', 'ON_TRIP')
             """, nativeQuery = true)
-    int releaseDriver(@Param("driverId") String driverId);
+    int releaseDriver(@Param("driverId") UUID driverId);
 
     /**
      * START TRIP: Chuyển tài xế từ RESERVED sang ON_TRIP
@@ -77,7 +78,7 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :driverId AND status = 'RESERVED'
             """, nativeQuery = true)
-    int startTrip(@Param("driverId") String driverId);
+    int startTrip(@Param("driverId") UUID driverId);
 
     /**
      * COMPLETE TRIP: Hoàn thành chuyến, tài xế trở lại AVAILABLE
@@ -93,7 +94,7 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :driverId AND status = 'ON_TRIP'
             """, nativeQuery = true)
-    int completeTrip(@Param("driverId") String driverId);
+    int completeTrip(@Param("driverId") UUID driverId);
 
     /**
      * GO ONLINE: Tài xế bật app
@@ -107,7 +108,7 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :driverId AND status = 'OFFLINE'
             """, nativeQuery = true)
-    int goOnline(@Param("driverId") String driverId);
+    int goOnline(@Param("driverId") UUID driverId);
 
     /**
      * GO OFFLINE: Tài xế tắt app
@@ -123,6 +124,6 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :driverId AND status = 'AVAILABLE'
             """, nativeQuery = true)
-    int goOffline(@Param("driverId") String driverId);
+    int goOffline(@Param("driverId") UUID driverId);
 
 }

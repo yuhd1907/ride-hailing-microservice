@@ -1,5 +1,7 @@
 package com.ridehail.userservice.controller;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -12,12 +14,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.ridehail.userservice.config.RequestContextFilter;
 import com.ridehail.userservice.config.exception.GlobalExceptionHandler;
 import com.ridehail.userservice.config.exception.UnauthorizedException;
+import com.ridehail.userservice.config.exception.ResourceNotFoundException;
+import com.ridehail.userservice.dto.response.UserResponse;
 import com.ridehail.userservice.service.AuthService;
 import com.ridehail.userservice.service.UserService;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -86,7 +91,8 @@ class UserHttpErrorsTest {
 
     @Test
     void anotherUsersProfileCannotBeChanged() throws Exception {
-        mvc.perform(put("/users/victim").header("X-User-Id", "attacker")
+        mvc.perform(put("/users/b83ea108-d819-4bb8-b213-986c3a38e0bd")
+            .header("X-User-Id", "dd2226b7-2535-42ef-a438-638c63b3a981")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"fullName\":\"Changed Name\"}")).andExpect(status().isForbidden());
         verifyNoInteractions(service, authService);
@@ -94,7 +100,8 @@ class UserHttpErrorsTest {
 
     @Test
     void whitespaceOnlyNamesAreRejected() throws Exception {
-        mvc.perform(put("/users/owner").header("X-User-Id", "owner")
+        mvc.perform(put("/users/ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f")
+            .header("X-User-Id", "ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"fullName\":\"  \"}"))
             .andExpect(status().isBadRequest())
@@ -109,6 +116,32 @@ class UserHttpErrorsTest {
             .content(
                     "{\"email\":\"test@example.com\",\"password\":\"Password@123\",\"fullName\":\"Test User\",\"phone\":\"0901234567\",\"role\":\"ROLE_PASSENGER\"}"))
             .andExpect(status().isConflict());
+    }
+
+    @Test
+    void malformedUserIdReturns400BeforeCallingTheService() throws Exception {
+        mvc.perform(get("/users/not-a-uuid")).andExpect(status().isBadRequest());
+        mvc.perform(get("/users/me").header("X-User-Id", "not-a-uuid")).andExpect(status().isBadRequest());
+        verifyNoInteractions(service, authService);
+    }
+
+    @Test
+    void profileUsesUuidHeaderAndSerializesItsIdAsAString() throws Exception {
+        UUID userId = UUID.randomUUID();
+        var response = new UserResponse();
+        response.setId(userId);
+        when(service.getUserById(userId)).thenReturn(response);
+        mvc.perform(get("/users/me").header("X-User-Id", userId.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(userId.toString()));
+        verify(service).getUserById(userId);
+    }
+
+    @Test
+    void missingUserWithAValidUuidReturns404() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(service.getUserById(userId)).thenThrow(new ResourceNotFoundException("Missing user"));
+        mvc.perform(get("/users/" + userId)).andExpect(status().isNotFound());
     }
 
 }

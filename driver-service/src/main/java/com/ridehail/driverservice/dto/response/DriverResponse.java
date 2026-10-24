@@ -1,13 +1,14 @@
 package com.ridehail.driverservice.dto.response;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * DTO phản hồi thông tin tài xế
  */
 public class DriverResponse {
 
-    private String id;
+    private UUID id;
 
     private String fullName;
 
@@ -19,9 +20,9 @@ public class DriverResponse {
 
     private String status;
 
-    private String currentTripId;
+    private UUID currentTripId;
 
-    private String reservationId;
+    private UUID reservationId;
 
     private Double distance; // Khoảng cách từ khách (km) - chỉ có khi tìm kiếm nearby
 
@@ -33,9 +34,8 @@ public class DriverResponse {
     public DriverResponse() {
     }
 
-    public DriverResponse(String id, String fullName, String phone, String licensePlate, String vehicleType,
-            String status, String currentTripId, String reservationId, LocalDateTime createdAt,
-            LocalDateTime updatedAt) {
+    public DriverResponse(UUID id, String fullName, String phone, String licensePlate, String vehicleType,
+            String status, UUID currentTripId, UUID reservationId, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.fullName = fullName;
         this.phone = phone;
@@ -49,11 +49,11 @@ public class DriverResponse {
     }
 
     // === Getters & Setters ===
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
@@ -97,19 +97,19 @@ public class DriverResponse {
         this.status = status;
     }
 
-    public String getCurrentTripId() {
+    public UUID getCurrentTripId() {
         return currentTripId;
     }
 
-    public void setCurrentTripId(String currentTripId) {
+    public void setCurrentTripId(UUID currentTripId) {
         this.currentTripId = currentTripId;
     }
 
-    public String getReservationId() {
+    public UUID getReservationId() {
         return reservationId;
     }
 
-    public void setReservationId(String reservationId) {
+    public void setReservationId(UUID reservationId) {
         this.reservationId = reservationId;
     }
 

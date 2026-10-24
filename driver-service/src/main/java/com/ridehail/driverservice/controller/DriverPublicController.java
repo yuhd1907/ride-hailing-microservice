@@ -2,6 +2,7 @@ package com.ridehail.driverservice.controller;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -35,7 +36,7 @@ public class DriverPublicController {
      * GET /drivers/{id} - Lấy thông tin tài xế theo ID
      */
     @GetMapping("/{id}")
-    public ResponseEntity<DriverResponse> getDriverById(@PathVariable String id) {
+    public ResponseEntity<DriverResponse> getDriverById(@PathVariable UUID id) {
         DriverResponse response = driverService.getDriverById(id);
 
         return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);
@@ -45,14 +46,14 @@ public class DriverPublicController {
      * POST /drivers/{id}/location - Cập nhật vị trí GPS tài xế (Redis GEO)
      */
     @PostMapping("/{id}/location")
-    public ResponseEntity<Map<String, String>> updateLocation(@PathVariable String id,
+    public ResponseEntity<Map<String, String>> updateLocation(@PathVariable UUID id,
             @Valid @RequestBody LocationUpdateRequest request) {
 
         driverService.updateLocation(id, request);
 
         return ResponseEntity.ok()
             .header("X-Handled-By-Instance", driverService.getInstanceId())
-            .body(Map.of("message", "Cập nhật vị trí tài xế thành công", "driverId", id, "handledBy",
+            .body(Map.of("message", "Cập nhật vị trí tài xế thành công", "driverId", id.toString(), "handledBy",
                     driverService.getInstanceId()));
     }
 
@@ -73,7 +74,7 @@ public class DriverPublicController {
      * POST /drivers/{id}/go-online - Tài xế bật app (OFFLINE → AVAILABLE)
      */
     @PostMapping("/{id}/go-online")
-    public ResponseEntity<DriverResponse> goOnline(@PathVariable String id) {
+    public ResponseEntity<DriverResponse> goOnline(@PathVariable UUID id) {
 
         DriverResponse response = driverService.goOnline(id);
         return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);
@@ -83,7 +84,7 @@ public class DriverPublicController {
      * POST /drivers/{id}/go-offline - Tài xế tắt app (AVAILABLE → OFFLINE)
      */
     @PostMapping("/{id}/go-offline")
-    public ResponseEntity<DriverResponse> goOffline(@PathVariable String id) {
+    public ResponseEntity<DriverResponse> goOffline(@PathVariable UUID id) {
 
         DriverResponse response = driverService.goOffline(id);
         return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);

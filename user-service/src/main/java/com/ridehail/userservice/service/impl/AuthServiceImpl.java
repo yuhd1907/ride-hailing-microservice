@@ -75,7 +75,8 @@ public class AuthServiceImpl implements AuthService {
         user.setRoles(roles);
 
         User savedUser = userRepository.save(user);
-        log.info("Đăng ký thành công user: {} ({})", savedUser.getId(), savedUser.getEmail());
+        MDC.put("userId", savedUser.getId().toString());
+        log.info("Đăng ký thành công userId={} ({})", savedUser.getId(), savedUser.getEmail());
 
         return userMapper.toResponse(savedUser);
     }
@@ -96,8 +97,9 @@ public class AuthServiceImpl implements AuthService {
             throw new ConflictException("Tài khoản đã bị " + user.getStatus().name().toLowerCase());
         }
 
+        MDC.put("userId", user.getId().toString());
         String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRoles());
-        log.info("Đăng nhập thành công user: {} ({})", user.getId(), user.getEmail());
+        log.info("Đăng nhập thành công userId={} ({})", user.getId(), user.getEmail());
 
         return new JwtResponse(token, user.getId(), user.getEmail(), user.getRoles(), jwtService.getExpirationMs());
     }
@@ -106,6 +108,7 @@ public class AuthServiceImpl implements AuthService {
     public void logout(String token) {
         MDC.put("action", "LOGOUT");
 
+        MDC.put("userId", jwtService.parseToken(token).getSubject());
         long remainingMs = jwtService.getRemainingExpirationMs(token);
         tokenBlacklistService.blacklistToken(token, remainingMs);
 

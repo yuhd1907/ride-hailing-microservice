@@ -38,6 +38,10 @@ Gateway đặt xử lý reactive trong `filter`; Eureka giữ cấu trúc gọn 
 - Import tường minh; sắp xếp theo thư viện Java, dependency, package dự án, static import.
 - Tên lớp dùng PascalCase; tên biến và phương thức dùng camelCase; hằng số dùng UPPER_SNAKE_CASE.
 - File UTF-8, xuống dòng LF và thụt lề Java bằng 4 dấu cách.
+- ID nghiệp vụ dùng `java.util.UUID` và cột PostgreSQL `UUID`; chỉ chuyển sang
+  chuỗi khi ghi JWT, header HTTP hoặc Redis. JSON vẫn biểu diễn UUID dạng chuỗi.
+- Log gắn tên đối tượng qua `userId`, `driverId`, `tripId`, `reservationId` trong
+  MDC và JSON; không thêm tiền tố đối tượng vào giá trị UUID.
 
 Các đường dẫn API, cổng service, trường JSON và mã HTTP vẫn theo hợp đồng hiện có
 của hệ thống ride-hailing. `/ping` trả nội dung `UP`. Việc chuẩn hóa package

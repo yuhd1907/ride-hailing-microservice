@@ -18,9 +18,9 @@ async function request(url, method = 'GET', body) {
 
 const gateway = process.env.GATEWAY_URL || 'http://localhost:8080';
 const positions = [
-    { id: 'drv_target_01', latitude: 21.028511, longitude: 105.854167 },
-    { id: 'drv_target_02', latitude: 21.035, longitude: 105.85 },
-    { id: 'drv_target_03', latitude: 21.02, longitude: 105.86 }
+    { id: 'fd699acc-6544-44a9-9634-5396060c61b8', latitude: 21.028511, longitude: 105.854167 },
+    { id: '5e11b65c-36ef-47cd-9019-9db767cf8d01', latitude: 21.035, longitude: 105.85 },
+    { id: 'c61fea6d-3478-482f-a405-73cc2d71afe9', latitude: 21.02, longitude: 105.86 }
 ];
 async function main() {
     assert.ok(process.env.AUTH_TOKEN, 'Set AUTH_TOKEN to a valid login token before updating driver locations');

@@ -1,17 +1,19 @@
 package com.ridehail.driverservice.dto.response;
 
+import java.util.UUID;
+
 public final class NearbyDriverResult {
 
-    private final String driverId;
+    private final UUID driverId;
 
     private final double distanceKm;
 
-    public NearbyDriverResult(String driverId, double distanceKm) {
+    public NearbyDriverResult(UUID driverId, double distanceKm) {
         this.driverId = driverId;
         this.distanceKm = distanceKm;
     }
 
-    public String getDriverId() {
+    public UUID getDriverId() {
         return driverId;
     }
 

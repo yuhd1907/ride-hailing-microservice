@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +63,8 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional(readOnly = true)
-    public DriverResponse getDriverById(String driverId) {
+    public DriverResponse getDriverById(UUID driverId) {
+        MDC.put("driverId", driverId.toString());
         Driver driver = driverRepository.findById(driverId)
             .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế với ID: " + driverId));
         return driverMapper.toResponse(driver);
@@ -73,7 +75,8 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional
-    public void updateLocation(String driverId, LocationUpdateRequest request) {
+    public void updateLocation(UUID driverId, LocationUpdateRequest request) {
+        MDC.put("driverId", driverId.toString());
         MDC.put("action", "UPDATE_LOCATION");
 
         // Kiểm tra tài xế tồn tại
@@ -90,7 +93,7 @@ public class DriverServiceImpl implements DriverService {
         else {
             locationService.removeDriver(driverId);
         }
-        log.info("[{}] Cập nhật vị trí tài xế {} -> ({}, {})", instanceId, driverId, request.getLatitude(),
+        log.info("[{}] Cập nhật vị trí driverId={} -> ({}, {})", instanceId, driverId, request.getLatitude(),
                 request.getLongitude());
     }
 
@@ -116,14 +119,12 @@ public class DriverServiceImpl implements DriverService {
         }
 
         // Step 2: Lọc chỉ lấy tài xế AVAILABLE trong PostgreSQL
-        List<String> nearbyIds = nearbyResults.stream()
-            .map(NearbyDriverResult::getDriverId)
-            .collect(Collectors.toList());
+        List<UUID> nearbyIds = nearbyResults.stream().map(NearbyDriverResult::getDriverId).collect(Collectors.toList());
 
         List<Driver> availableDrivers = driverRepository.findByIdInAndStatus(nearbyIds, DriverStatus.AVAILABLE);
 
         // Step 3: Map khoảng cách từ Redis vào DriverResponse
-        Map<String, Double> distanceMap = nearbyResults.stream()
+        Map<UUID, Double> distanceMap = nearbyResults.stream()
             .collect(Collectors.toMap(NearbyDriverResult::getDriverId, NearbyDriverResult::getDistanceKm));
 
         List<DriverResponse> result = availableDrivers.stream().map(driver -> {
@@ -149,16 +150,18 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional
-    public DriverResponse reserveDriver(String driverId, ReserveDriverRequest request) {
+    public DriverResponse reserveDriver(UUID driverId, ReserveDriverRequest request) {
+        MDC.put("driverId", driverId.toString());
         MDC.put("action", "RESERVE_DRIVER");
-        MDC.put("tripId", request.getTripId());
+        MDC.put("tripId", request.getTripId().toString());
+        MDC.put("reservationId", request.getReservationId().toString());
 
         int updatedRows = driverRepository.reserveDriverAtomic(driverId, request.getTripId(),
                 request.getReservationId());
 
         if (updatedRows == 0) {
             requireDriverExists(driverId);
-            log.warn("[{}] CONFLICT: Tài xế {} không thể giữ (đã bị giữ hoặc không available)", instanceId, driverId);
+            log.warn("[{}] CONFLICT: driverId={} không thể giữ (đã bị giữ hoặc không available)", instanceId, driverId);
             throw new DriverConflictException(
                     "Tài xế " + driverId + " không khả dụng. Có thể đã bị giữ bởi request khác (409 Conflict)");
         }
@@ -169,7 +172,7 @@ public class DriverServiceImpl implements DriverService {
         Driver driver = driverRepository.findById(driverId)
             .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
 
-        log.info("[{}] Giữ tài xế {} thành công cho trip {}", instanceId, driverId, request.getTripId());
+        log.info("[{}] Giữ driverId={} thành công cho tripId={}", instanceId, driverId, request.getTripId());
         return driverMapper.toResponse(driver);
     }
 
@@ -178,7 +181,8 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional
-    public DriverResponse releaseDriver(String driverId) {
+    public DriverResponse releaseDriver(UUID driverId) {
+        MDC.put("driverId", driverId.toString());
         MDC.put("action", "RELEASE_DRIVER");
 
         int updatedRows = driverRepository.releaseDriver(driverId);
@@ -192,7 +196,7 @@ public class DriverServiceImpl implements DriverService {
             .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
 
         restoreLocation(driverId);
-        log.info("[{}] Giải phóng tài xế {} thành công", instanceId, driverId);
+        log.info("[{}] Giải phóng driverId={} thành công", instanceId, driverId);
         return driverMapper.toResponse(driver);
     }
 
@@ -201,7 +205,8 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional
-    public DriverResponse startTrip(String driverId) {
+    public DriverResponse startTrip(UUID driverId) {
+        MDC.put("driverId", driverId.toString());
         MDC.put("action", "START_TRIP");
 
         int updatedRows = driverRepository.startTrip(driverId);
@@ -214,7 +219,7 @@ public class DriverServiceImpl implements DriverService {
         Driver driver = driverRepository.findById(driverId)
             .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
 
-        log.info("[{}] Tài xế {} bắt đầu chuyến", instanceId, driverId);
+        log.info("[{}] driverId={} bắt đầu chuyến", instanceId, driverId);
         return driverMapper.toResponse(driver);
     }
 
@@ -223,7 +228,8 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional
-    public DriverResponse completeTrip(String driverId) {
+    public DriverResponse completeTrip(UUID driverId) {
+        MDC.put("driverId", driverId.toString());
         MDC.put("action", "COMPLETE_TRIP");
 
         int updatedRows = driverRepository.completeTrip(driverId);
@@ -237,7 +243,7 @@ public class DriverServiceImpl implements DriverService {
             .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
 
         restoreLocation(driverId);
-        log.info("[{}] Tài xế {} hoàn thành chuyến", instanceId, driverId);
+        log.info("[{}] driverId={} hoàn thành chuyến", instanceId, driverId);
         return driverMapper.toResponse(driver);
     }
 
@@ -246,7 +252,8 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional
-    public DriverResponse goOnline(String driverId) {
+    public DriverResponse goOnline(UUID driverId) {
+        MDC.put("driverId", driverId.toString());
         MDC.put("action", "GO_ONLINE");
 
         int updatedRows = driverRepository.goOnline(driverId);
@@ -260,7 +267,7 @@ public class DriverServiceImpl implements DriverService {
             .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
 
         restoreLocation(driverId);
-        log.info("[{}] Tài xế {} đã bật app (ONLINE)", instanceId, driverId);
+        log.info("[{}] driverId={} đã bật app (ONLINE)", instanceId, driverId);
         return driverMapper.toResponse(driver);
     }
 
@@ -269,7 +276,8 @@ public class DriverServiceImpl implements DriverService {
      */
     @Override
     @Transactional
-    public DriverResponse goOffline(String driverId) {
+    public DriverResponse goOffline(UUID driverId) {
+        MDC.put("driverId", driverId.toString());
         MDC.put("action", "GO_OFFLINE");
 
         int updatedRows = driverRepository.goOffline(driverId);
@@ -285,7 +293,7 @@ public class DriverServiceImpl implements DriverService {
         Driver driver = driverRepository.findById(driverId)
             .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
 
-        log.info("[{}] Tài xế {} đã tắt app (OFFLINE)", instanceId, driverId);
+        log.info("[{}] driverId={} đã tắt app (OFFLINE)", instanceId, driverId);
         return driverMapper.toResponse(driver);
     }
 
@@ -297,13 +305,13 @@ public class DriverServiceImpl implements DriverService {
         return instanceId;
     }
 
-    private void requireDriverExists(String driverId) {
+    private void requireDriverExists(UUID driverId) {
         if (!driverRepository.existsById(driverId)) {
             throw new DriverNotFoundException("Không tìm thấy tài xế: " + driverId);
         }
     }
 
-    private void restoreLocation(String driverId) {
+    private void restoreLocation(UUID driverId) {
         driverLocationRepository.findById(driverId)
             .ifPresent(location -> locationService.updateLocation(driverId, location.getLatitude(),
                     location.getLongitude()));

@@ -1,6 +1,7 @@
 package com.ridehail.driverservice.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,8 +13,8 @@ import jakarta.persistence.Table;
 public class DriverLocation {
 
     @Id
-    @Column(name = "driver_id", length = 36)
-    private String driverId;
+    @Column(name = "driver_id")
+    private UUID driverId;
 
     @Column(nullable = false)
     private double latitude;
@@ -27,7 +28,7 @@ public class DriverLocation {
     protected DriverLocation() {
     }
 
-    public String getDriverId() {
+    public UUID getDriverId() {
         return driverId;
     }
 

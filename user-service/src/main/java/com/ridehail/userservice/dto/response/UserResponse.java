@@ -2,13 +2,14 @@ package com.ridehail.userservice.dto.response;
 
 import java.time.LocalDateTime;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * DTO phản hồi thông tin user (không bao giờ trả về passwordHash)
  */
 public class UserResponse {
 
-    private String id;
+    private UUID id;
 
     private String email;
 
@@ -28,7 +29,7 @@ public class UserResponse {
     public UserResponse() {
     }
 
-    public UserResponse(String id, String email, String fullName, String phone, String status, Set<String> roles,
+    public UserResponse(UUID id, String email, String fullName, String phone, String status, Set<String> roles,
             LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.email = email;
@@ -41,11 +42,11 @@ public class UserResponse {
     }
 
     // === Getters & Setters ===
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 

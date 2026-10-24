@@ -27,8 +27,8 @@ import jakarta.persistence.Version;
 public class User {
 
     @Id
-    @Column(name = "id", length = 36, nullable = false, updatable = false)
-    private String id;
+    @Column(name = "id", nullable = false, updatable = false)
+    private UUID id;
 
     @Column(name = "email", length = 255, nullable = false, unique = true)
     private String email;
@@ -65,7 +65,7 @@ public class User {
     @PrePersist
     protected void onCreate() {
         if (this.id == null) {
-            this.id = "usr_" + UUID.randomUUID().toString().replace("-", "");
+            this.id = UUID.randomUUID();
         }
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
@@ -81,11 +81,11 @@ public class User {
     }
 
     // === Getters & Setters ===
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 

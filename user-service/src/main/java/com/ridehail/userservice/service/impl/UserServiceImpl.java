@@ -1,5 +1,7 @@
 package com.ridehail.userservice.service.impl;
 
+import java.util.UUID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -31,7 +33,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    public UserResponse getUserById(String userId) {
+    public UserResponse getUserById(UUID userId) {
+        MDC.put("userId", userId.toString());
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user với ID: " + userId));
         return userMapper.toResponse(user);
@@ -47,7 +50,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateProfile(String userId, UpdateProfileRequest request) {
+    public UserResponse updateProfile(UUID userId, UpdateProfileRequest request) {
+        MDC.put("userId", userId.toString());
         MDC.put("action", "UPDATE_PROFILE");
 
         User user = userRepository.findById(userId)
@@ -68,7 +72,8 @@ public class UserServiceImpl implements UserService {
         }
 
         User savedUser = userRepository.save(user);
-        log.info("Cập nhật hồ sơ thành công user: {}", savedUser.getId());
+        MDC.put("userId", savedUser.getId().toString());
+        log.info("Cập nhật hồ sơ thành công userId={}", savedUser.getId());
 
         return userMapper.toResponse(savedUser);
     }

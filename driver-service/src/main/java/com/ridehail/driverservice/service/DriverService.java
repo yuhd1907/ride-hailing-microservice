@@ -1,6 +1,7 @@
 package com.ridehail.driverservice.service;
 
 import java.util.List;
+import java.util.UUID;
 
 import com.ridehail.driverservice.dto.request.LocationUpdateRequest;
 import com.ridehail.driverservice.dto.request.ReserveDriverRequest;
@@ -8,23 +9,23 @@ import com.ridehail.driverservice.dto.response.DriverResponse;
 
 public interface DriverService {
 
-    DriverResponse getDriverById(String driverId);
+    DriverResponse getDriverById(UUID driverId);
 
-    void updateLocation(String driverId, LocationUpdateRequest request);
+    void updateLocation(UUID driverId, LocationUpdateRequest request);
 
     List<DriverResponse> findAvailableNearby(double latitude, double longitude, double radiusKm);
 
-    DriverResponse reserveDriver(String driverId, ReserveDriverRequest request);
+    DriverResponse reserveDriver(UUID driverId, ReserveDriverRequest request);
 
-    DriverResponse releaseDriver(String driverId);
+    DriverResponse releaseDriver(UUID driverId);
 
-    DriverResponse startTrip(String driverId);
+    DriverResponse startTrip(UUID driverId);
 
-    DriverResponse completeTrip(String driverId);
+    DriverResponse completeTrip(UUID driverId);
 
-    DriverResponse goOnline(String driverId);
+    DriverResponse goOnline(UUID driverId);
 
-    DriverResponse goOffline(String driverId);
+    DriverResponse goOffline(UUID driverId);
 
     String getInstanceId();
 

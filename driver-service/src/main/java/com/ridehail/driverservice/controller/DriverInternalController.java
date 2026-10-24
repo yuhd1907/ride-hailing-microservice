@@ -1,6 +1,7 @@
 package com.ridehail.driverservice.controller;
 
 import java.util.List;
+import java.util.UUID;
 
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -48,7 +49,7 @@ public class DriverInternalController {
      * Service) Trả về 200 OK nếu thành công, 409 Conflict nếu bị tranh chấp
      */
     @PostMapping("/{id}/reserve")
-    public ResponseEntity<DriverResponse> reserveDriver(@PathVariable String id,
+    public ResponseEntity<DriverResponse> reserveDriver(@PathVariable UUID id,
             @Valid @RequestBody ReserveDriverRequest request) {
 
         DriverResponse response = driverService.reserveDriver(id, request);
@@ -59,7 +60,7 @@ public class DriverInternalController {
      * POST /internal/drivers/{id}/release - Giải phóng tài xế (cho TV3 Saga Coordinator)
      */
     @PostMapping("/{id}/release")
-    public ResponseEntity<DriverResponse> releaseDriver(@PathVariable String id) {
+    public ResponseEntity<DriverResponse> releaseDriver(@PathVariable UUID id) {
 
         DriverResponse response = driverService.releaseDriver(id);
         return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);
@@ -69,7 +70,7 @@ public class DriverInternalController {
      * POST /internal/drivers/{id}/start-trip - Bắt đầu chuyến (cho TV2 Trip Service)
      */
     @PostMapping("/{id}/start-trip")
-    public ResponseEntity<DriverResponse> startTrip(@PathVariable String id) {
+    public ResponseEntity<DriverResponse> startTrip(@PathVariable UUID id) {
 
         DriverResponse response = driverService.startTrip(id);
         return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);
@@ -80,7 +81,7 @@ public class DriverInternalController {
      * Service)
      */
     @PostMapping("/{id}/complete-trip")
-    public ResponseEntity<DriverResponse> completeTrip(@PathVariable String id) {
+    public ResponseEntity<DriverResponse> completeTrip(@PathVariable UUID id) {
 
         DriverResponse response = driverService.completeTrip(id);
         return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);
