@@ -6,4 +6,4 @@ pluginManagement {
 }
 
 rootProject.name = 'ride-hailing-microservice'
-include 'api-gateway', 'user-service', 'driver-service', 'eureka-server'
+include 'api-gateway', 'user-service', 'driver-service', 'eureka-server', 'payment-service', 'notification-service'
