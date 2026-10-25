@@ -28,7 +28,8 @@ public class Notification {
     @Column(name = "recipient_id", nullable = false)
     private UUID recipientId;
 
-    // Chuỗi tự do (DRIVER_ASSIGNED, PAYMENT_SUCCESS, ...) để thêm loại mới không cần migration
+    // Chuỗi tự do (DRIVER_ASSIGNED, PAYMENT_SUCCESS, ...) để thêm loại mới không cần
+    // migration
     @Column(name = "type", length = 50, nullable = false)
     private String type;
 

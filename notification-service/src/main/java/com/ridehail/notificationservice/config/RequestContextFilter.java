@@ -16,8 +16,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Đọc X-Correlation-ID do Gateway gắn (hoặc tự sinh UUID) và đưa vào MDC để mọi dòng log của
- * request đều mang correlationId và instanceId.
+ * Đọc X-Correlation-ID do Gateway gắn (hoặc tự sinh UUID) và đưa vào MDC để mọi dòng log
+ * của request đều mang correlationId và instanceId.
  */
 @Component("rideHailingRequestContextFilter")
 @Order(Ordered.HIGHEST_PRECEDENCE)
