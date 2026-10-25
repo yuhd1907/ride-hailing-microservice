@@ -38,10 +38,10 @@ Các cổng bên dưới là cổng mặc định truy cập từ máy host.
 | Driver instance 2 | 18082 | Bật bằng profile `scale` |
 | Trip Service | 8083 | Dự kiến bổ sung; route `/trips/**` |
 | Matching Service | 8084 | Dự kiến bổ sung; route `/matching/**` |
-| Payment Service | 8085 | Dự kiến bổ sung; route `/payments/**` |
-| Notification Service | 8086 | Dự kiến bổ sung; route `/notifications/**` |
+| Payment Service | 8085 | Thanh toán mô phỏng, chống thanh toán trùng (idempotency); route `/payments/**` |
+| Notification Service | 8086 | Nhận event và gửi thông báo; route `/notifications/**` |
 | PostgreSQL User / Driver | 5433 / 5434 | Database riêng cho hai service hiện có |
-| PostgreSQL mở rộng | 5435–5438 | Database Trip, Matching, Payment, Notification; profile `extended` |
+| PostgreSQL Trip / Matching / Payment / Notification | 5435–5438 | Database riêng của từng service |
 | Redis | 6379 | GEO, JWT blacklist và rate limiting |
 | RabbitMQ | 5672 / 15672 | AMQP / giao diện quản trị |
 
@@ -65,10 +65,12 @@ api-gateway/       Gateway, JWT filter và cấu hình route
 eureka-server/     Service discovery
 user-service/      Tài khoản, xác thực và hồ sơ người dùng
 driver-service/    Tài xế, vị trí và xử lý giữ tài xế
-docs/              Quy ước code và commit
+payment-service/   Thanh toán mô phỏng, idempotency, Saga (phía thanh toán)
+notification-service/ Nhận event và gửi thông báo
+deploy/            docker-compose.yml dùng chung cho cả hệ thống
+docs/              Quy ước code, commit và hợp đồng event (event-schema.md)
 tests/             Kiểm thử tích hợp, Redis GEO và tương tranh
 scripts/           Seed dữ liệu và kiểm tra cân bằng tải
-docker-compose.yml Cấu hình ứng dụng và hạ tầng
 .env.example       Mẫu cấu hình môi trường
 ```
 
@@ -92,26 +94,31 @@ Trên Linux/macOS dùng `cp .env.example .env`.
 
 ### 2. Khởi động hệ thống
 
+File compose nằm trong `deploy/`, nên mọi lệnh chạy từ thư mục gốc phải kèm `-f deploy/docker-compose.yml --env-file .env` (Compose mặc định chỉ tìm `.env` cạnh file compose):
+
 ```bash
-docker compose up --build -d
-docker compose ps
+docker compose -f deploy/docker-compose.yml --env-file .env up --build -d
+docker compose -f deploy/docker-compose.yml --env-file .env ps
 ```
+
+Để gõ ngắn trong một cửa sổ PowerShell, đặt trước hai biến rồi chỉ cần `docker compose up --build -d`, `docker compose ps`...:
+
+```powershell
+$env:COMPOSE_FILE = "deploy/docker-compose.yml"
+$env:COMPOSE_ENV_FILES = ".env"
+```
+
+Các service gọi Eureka qua tên `eureka-server` (gạch ngang), là alias của service `eureka_server`: Tomcat từ chối tên host có dấu gạch dưới với lỗi 400, khiến service không đăng ký được.
 
 Sau khi các container healthy, truy cập Eureka tại `http://localhost:8761` và RabbitMQ Management tại `http://localhost:15672` (mặc định `guest` / `guest`).
 
 Chạy thêm Driver instance thứ hai:
 
 ```bash
-docker compose --profile scale up --build -d
+docker compose -f deploy/docker-compose.yml --env-file .env --profile scale up --build -d
 ```
 
-Chuẩn bị database cho các service mở rộng:
-
-```bash
-docker compose --profile extended up -d trip_postgres matching_postgres payment_postgres notification_postgres
-```
-
-Profile `extended` chỉ khởi tạo database. Cần bổ sung mã nguồn và đăng ký các service tương ứng với Eureka để sử dụng route mở rộng.
+Database của cả bảy service đều khởi động mặc định cùng hệ thống.
 
 ### 3. Kiểm tra nhanh
 
@@ -154,13 +161,13 @@ Dữ liệu mẫu nằm trong [scripts/seed-data.sql](scripts/seed-data.sql), đ
 
 ## Build và kiểm thử
 
-Build toàn bộ bốn module, bao gồm kiểm thử Java và kiểm tra định dạng:
+Build toàn bộ sáu module Java, bao gồm kiểm thử và kiểm tra định dạng:
 
 ```powershell
 .\gradlew.bat build
 ```
 
-Trên Linux/macOS dùng `sh ./gradlew build`. Có thể chạy riêng `test`, `format` hoặc `checkFormat` bằng Gradle Wrapper.
+Trên Linux/macOS dùng `sh ./gradlew build`. Có thể chạy riêng `test`, `format` hoặc `checkFormat` bằng Gradle Wrapper. File `gradle.properties` ép Gradle dùng UTF-8 để chú thích tiếng Việt được định dạng giống nhau trên mọi máy.
 
 Sau khi hệ thống Docker hoạt động, chạy kiểm thử tích hợp:
 
@@ -186,5 +193,6 @@ node scripts/test-load-balancing.js
 
 - [Quy ước code](docs/CODE_STYLE.md)
 - [Quy ước commit](docs/COMMIT_CONVENTION.md)
-- Xem log: `docker compose logs -f api_gateway user_service driver_service_1`.
-- Dừng hệ thống: `docker compose down`.
+- Xem log: `docker compose -f deploy/docker-compose.yml --env-file .env logs -f api_gateway user_service driver_service_1`.
+- Dừng hệ thống: `docker compose -f deploy/docker-compose.yml --env-file .env down`.
+- [Hợp đồng event RabbitMQ](docs/event-schema.md)
