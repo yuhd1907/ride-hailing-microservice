@@ -1,0 +1,17 @@
+{
+  "name": "trip-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ride hailing trip service",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.8",
+    "dotenv": "^16.4.7",
+    "eureka-js-client": "^4.5.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  }
+}

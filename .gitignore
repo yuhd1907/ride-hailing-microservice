@@ -31,6 +31,10 @@ logs/
 docker-compose.override.yml
 .verification/
 
+#Node.js
+node_modules/
+npm-debug.log*
+
 # Local plans and agent instructions
 ROADMAP*.md
 roadmap*.md
