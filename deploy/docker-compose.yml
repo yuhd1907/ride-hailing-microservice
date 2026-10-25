@@ -10,7 +10,7 @@
 #  Quy uoc khi them / sua service:
 #    - Moi service co thu muc rieng o goc repo, build bang ../<ten-service>.
 #    - Cong ben trong container = cong host, doc tu SERVER_PORT (Java) hoac <TEN>_SERVICE_PORT (Node).
-#    - Moi service co DB rieng <ten>_postgres (postgres:16-alpine) va dang ky Eureka (eureka_server:8761).
+#    - Moi service co DB rieng <ten>_postgres (postgres:16-alpine) va dang ky Eureka (eureka-server:8761).
 #    - Service depends_on eureka_server, DB cua minh, rabbitmq voi condition: service_healthy.
 #    - Java: SPRING_DATASOURCE_*, SPRING_RABBITMQ_*. Node: DATABASE_URL, RABBITMQ_URL, EUREKA_HOST.
 #    - Mat khau / secret doc tu .env (xem .env.example), khong ghi cung.
@@ -47,7 +47,11 @@ services:
     ports:
       - "${EUREKA_PORT:-8761}:8761"
     networks:
-      - ride-hailing-net
+      ride-hailing-net:
+        # Tomcat tu choi ten host co dau gach duoi (eureka_server) voi loi 400,
+        # nen cac service goi Eureka qua ten khac co gach ngang: eureka-server
+        aliases:
+          - eureka-server
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8761/actuator/health || exit 1"]
       interval: 10s
@@ -167,7 +171,7 @@ services:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
       SERVER_PORT: 8080
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka_server:8761/eureka/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_DATA_REDIS_HOST: redis
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
     depends_on:
@@ -191,7 +195,7 @@ services:
       - "${USER_SERVICE_PORT:-8081}:8081"
     environment:
       SERVER_PORT: 8081
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka_server:8761/eureka/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://user_postgres:5432/${USER_DB_NAME:-user_db}
       SPRING_DATASOURCE_USERNAME: ${USER_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:-postgres_password}
@@ -222,7 +226,7 @@ services:
     environment: &driver-environment
       SERVER_PORT: 8082
       EUREKA_INSTANCE_INSTANCE_ID: driver-service-instance-1
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka_server:8761/eureka/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://driver_postgres:5432/${DRIVER_DB_NAME:-driver_db}
       SPRING_DATASOURCE_USERNAME: ${DRIVER_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${DRIVER_DB_PASSWORD:-postgres_password}
@@ -268,7 +272,7 @@ services:
       TRIP_SERVICE_PORT: 8083
       DATABASE_URL: postgres://${TRIP_DB_USER:-postgres}:${TRIP_DB_PASSWORD:-postgres_password}@trip_postgres:5432/${TRIP_DB_NAME:-trip_db}
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
-      EUREKA_HOST: eureka_server
+      EUREKA_HOST: eureka-server
       EUREKA_PORT: 8761
       NODE_ENV: production
     depends_on:
@@ -296,7 +300,7 @@ services:
       MATCHING_SERVICE_PORT: 8084
       DATABASE_URL: postgres://${MATCHING_DB_USER:-postgres}:${MATCHING_DB_PASSWORD:-postgres_password}@matching_postgres:5432/${MATCHING_DB_NAME:-matching_db}
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
-      EUREKA_HOST: eureka_server
+      EUREKA_HOST: eureka-server
       EUREKA_PORT: 8761
       NODE_ENV: production
     depends_on:
@@ -323,7 +327,7 @@ services:
       - "${PAYMENT_SERVICE_PORT:-8085}:8085"
     environment:
       SERVER_PORT: 8085
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka_server:8761/eureka/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://payment_postgres:5432/${PAYMENT_DB_NAME:-payment_db}
       SPRING_DATASOURCE_USERNAME: ${PAYMENT_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${PAYMENT_DB_PASSWORD:-postgres_password}
@@ -354,7 +358,7 @@ services:
       - "${NOTIFICATION_SERVICE_PORT:-8086}:8086"
     environment:
       SERVER_PORT: 8086
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka_server:8761/eureka/
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://notification_postgres:5432/${NOTIFICATION_DB_NAME:-notification_db}
       SPRING_DATASOURCE_USERNAME: ${NOTIFICATION_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-postgres_password}
