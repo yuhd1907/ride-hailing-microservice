@@ -78,20 +78,48 @@ spring:
             - Path=/internal/drivers/**
 
         # === Trip Service Route (Điểm cắm cho TV2/TV3) ===
+        - id: trip-ping-route
+          uri: lb://TRIP-SERVICE
+          predicates:
+            - Path=/trips/ping
+          filters:
+            - SetPath=/ping
+
         - id: trip-service-route
           uri: lb://TRIP-SERVICE
           predicates:
             - Path=/trips/**
+
+        - id: matching-ping-route
+          uri: lb://MATCHING-SERVICE
+          predicates:
+            - Path=/matching/ping
+          filters:
+            - SetPath=/ping
 
         - id: matching-service-route
           uri: lb://MATCHING-SERVICE
           predicates:
             - Path=/matching/**
 
+        - id: payment-ping-route
+          uri: lb://PAYMENT-SERVICE
+          predicates:
+            - Path=/payments/ping
+          filters:
+            - SetPath=/ping
+
         - id: payment-service-route
           uri: lb://PAYMENT-SERVICE
           predicates:
             - Path=/payments/**
+
+        - id: notification-ping-route
+          uri: lb://NOTIFICATION-SERVICE
+          predicates:
+            - Path=/notifications/ping
+          filters:
+            - SetPath=/ping
 
         - id: notification-service-route
           uri: lb://NOTIFICATION-SERVICE
