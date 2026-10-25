@@ -1,34 +1,53 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8086}
 
 spring:
   application:
     name: notification-service
-
-  # Defaults are for running locally against `docker compose -f deploy/docker-compose.yml up notification-db rabbitmq`.
+  # Defaults are for running locally (IDE) against the databases published by deploy/docker-compose.yml.
   # Inside docker-compose these are overridden by environment variables.
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5438/notification_db}
-    username: ${SPRING_DATASOURCE_USERNAME:notification_svc}
-    password: ${SPRING_DATASOURCE_PASSWORD:notification_pass}
-
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres_password}
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      # Schema is owned by Flyway (src/main/resources/db/migration); Hibernate only checks it
+      ddl-auto: validate
     open-in-view: false
-
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
-    username: ${SPRING_RABBITMQ_USERNAME:rideflow}
-    password: ${SPRING_RABBITMQ_PASSWORD:rideflow_pass}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    connection-timeout: 5s
 
+# Eureka Client
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
+    registry-fetch-interval-seconds: 5
+  instance:
+    prefer-ip-address: true
+    # Resolved once from fixed values (not random) so logs and Eureka show the same id
+    instance-id: ${EUREKA_INSTANCE_INSTANCE_ID:${spring.application.name}:${HOSTNAME:local}:${server.port}}
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 10
+
+# Actuator
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health, info
   endpoint:
     health:
-      # Shows db + rabbit status at /actuator/health
-      show-components: always
+      show-details: always
+      probes:
+        enabled: true

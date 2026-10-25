@@ -54,6 +54,13 @@ Producer chỉ publish lên exchange, không cần biết ai consume. Consumer t
 
 Consumer **bỏ qua field lạ** (Jackson: `FAIL_ON_UNKNOWN_PROPERTIES = false`) để producer thêm field mới mà không làm hỏng consumer cũ. Đổi tên hoặc xoá field = thay đổi phá vỡ, phải thống nhất lại.
 
+### 1.5 ID, Correlation ID và kết nối
+
+- **Mọi ID** (ID nghiệp vụ, `eventId`, `correlationId`, idempotency key) là **UUID**. Trong PostgreSQL dùng cột kiểu `UUID`; Java dùng `java.util.UUID`, Node dùng `crypto.randomUUID()`. Không thêm tiền tố vào giá trị UUID.
+- Khi publish, ngoài `correlationId` trong envelope, producer gắn thêm `correlationId` vào **AMQP property** `correlationId` và header `x-correlation-id`, để log của mọi service nối được cùng một luồng.
+- Request HTTP dùng header `X-Correlation-ID` (Gateway sinh nếu chưa có), mọi service đọc header này và ghi vào log.
+- Tài khoản RabbitMQ chung: `guest` / `guest`, đọc từ biến môi trường (`RABBITMQ_DEFAULT_USER`, `RABBITMQ_DEFAULT_PASS`), không ghi cứng trong code.
+
 ## 2. Danh sách event
 
 | Event | Producer | Consumer |
@@ -92,7 +99,7 @@ Chuyến đi kết thúc, cần thu tiền khách.
 }
 ```
 
-Payment Service dùng `tripId` làm idempotency key của payment (`trip:<tripId>`) → mỗi chuyến chỉ có một payment, kể cả khi Trip Service publish lại với `eventId` khác.
+Payment Service dùng chính `tripId` làm idempotency key của payment (cột `idempotency_key` kiểu `UUID`, ràng buộc `UNIQUE`) → mỗi chuyến chỉ có một payment, kể cả khi Trip Service publish lại với `eventId` khác.
 
 ### 2.2 `matching.driver_assigned`
 
@@ -220,3 +227,4 @@ Trip Service đã hoàn tác chuyến sau khi thanh toán thất bại. Notifica
 | Ngày | Ai | Thay đổi |
 |---|---|---|
 | 2026-10-18 | TV Payment/Notification | Bản nháp đầu tiên |
+| 2026-10-25 | TV Payment/Notification | Chốt mọi ID là UUID (idempotency key = `tripId`), thêm quy ước Correlation ID và tài khoản RabbitMQ (mục 1.5) |
