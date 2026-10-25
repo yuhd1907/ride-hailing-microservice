@@ -1,0 +1,45 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# Gradle
+.gradle/
+build/
+bin/
+!gradle/wrapper/
+
+# Java
+*.class
+*.jar
+*.war
+!gradle/wrapper/gradle-wrapper.jar
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+
+# Docker
+docker-compose.override.yml
+.verification/
+
+# Local plans and agent instructions
+ROADMAP*.md
+roadmap*.md
+PLAN*.md
+plan*.md
+AGENTS.md
+CLAUDE.md
+.codex/
+.claude/
+.cursor/
+.cursorrules
+postman/skills/

@@ -1,0 +1,65 @@
+plugins {
+    id 'base'
+    id 'io.spring.javaformat' version '0.0.48' apply false
+}
+
+subprojects {
+    apply plugin: 'io.spring.javaformat'
+}
+
+tasks.register('format') {
+    group = 'formatting'
+    description = 'Formats Java source and tests in all services.'
+    dependsOn subprojects.collect { "${it.path}:format" }
+}
+
+tasks.register('checkFormat') {
+    group = 'verification'
+    description = 'Checks Java formatting in all services.'
+    dependsOn subprojects.collect { "${it.path}:checkFormat" }
+}
+
+tasks.named('build') {
+    dependsOn subprojects.collect { "${it.path}:build" }
+}
+
+tasks.register('test') {
+    dependsOn subprojects.collect { "${it.path}:test" }
+}
+
+tasks.named('check') {
+    dependsOn subprojects.collect { "${it.path}:check" }
+}
+
+tasks.named('assemble') {
+    dependsOn subprojects.collect { "${it.path}:assemble" }
+}
+
+// Gradle 8.x writes worker argfiles as UTF-8, while Windows Java reads them
+// using the native code page (gradle/gradle#30391). An ASCII manifest jar
+// carries percent-encoded URLs without renaming a Vietnamese project folder.
+subprojects { module ->
+    if (System.getProperty('os.name').startsWith('Windows')
+            && !java.nio.charset.StandardCharsets.US_ASCII.newEncoder().canEncode(module.projectDir.absolutePath)) {
+        plugins.withId('java') {
+            def originalClasspath = sourceSets.test.runtimeClasspath
+            def rootKey = Integer.toHexString(rootProject.projectDir.absolutePath.hashCode())
+            def classpathJar = tasks.register('windowsTestClasspath', Jar) {
+                archiveFileName = 'classpath.jar'
+                destinationDirectory = new File(gradle.gradleUserHomeDir,
+                        "caches/ride-hailing-classpaths/${rootKey}/${module.name}/test")
+                dependsOn tasks.named('testClasses')
+                inputs.files(originalClasspath)
+                doFirst {
+                    manifest.attributes('Class-Path': originalClasspath.files.collect {
+                        it.toURI().toASCIIString()
+                    }.join(' '))
+                }
+            }
+            tasks.named('test', Test) {
+                dependsOn classpathJar
+                classpath = files(classpathJar)
+            }
+        }
+    }
+}
