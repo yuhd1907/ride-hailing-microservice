@@ -61,6 +61,24 @@ Consumer **bỏ qua field lạ** (Jackson: `FAIL_ON_UNKNOWN_PROPERTIES = false`)
 - Request HTTP dùng header `X-Correlation-ID` (Gateway sinh nếu chưa có), mọi service đọc header này và ghi vào log.
 - Tài khoản RabbitMQ chung: `guest` / `guest`, đọc từ biến môi trường (`RABBITMQ_DEFAULT_USER`, `RABBITMQ_DEFAULT_PASS`), không ghi cứng trong code.
 
+### 1.6 Retry, dead-letter queue và publish tin cậy
+
+Mọi consumer dùng chung quy ước sau (Payment và Notification đã áp dụng, Trip/Matching làm theo):
+
+| Mục | Quy ước |
+|---|---|
+| Dead-letter exchange | `rideflow.dlx`, loại **direct**, durable |
+| Queue chính | `<service>.<eventType>`, durable, có `x-dead-letter-exchange = rideflow.dlx` và `x-dead-letter-routing-key = <queue>.dlq` |
+| Dead-letter queue | `<service>.<eventType>.dlq`, bind vào `rideflow.dlx` với routing key trùng tên queue |
+| Retry | Thử lại tại consumer tối đa **3 lần**, backoff 1s rồi 2s. Hết lượt thì reject không requeue để message vào DLQ |
+| Message không hợp lệ | (JSON sai, thiếu field bắt buộc, sai `eventType`) vào DLQ **ngay**, không retry |
+| Ack | Chỉ ack sau khi transaction xử lý đã commit |
+| Message | `delivery_mode = 2` (persistent), `message_id = eventId`, `type = eventType` |
+| Publish | Producer ghi event vào bảng outbox cùng transaction nghiệp vụ, relay publish và chờ publisher confirm (Payment Service). Event có thể được gửi lại, consumer phải chống trùng theo `eventId` |
+
+Message trong DLQ được giữ lại để điều tra và có thể replay về queue chính sau khi sửa lỗi
+(Payment/Notification có API `/internal/.../dlq/replay`). Chi tiết luồng Saga ở [saga.md](saga.md).
+
 ## 2. Danh sách event
 
 | Event | Producer | Consumer |
@@ -78,9 +96,9 @@ Chuyến đi kết thúc, cần thu tiền khách.
 | Field | Kiểu | Bắt buộc | Ghi chú |
 |---|---|---|---|
 | `tripId` | UUID | ✔ | |
-| `riderId` | UUID | ✔ | khách trả tiền |
+| `riderId` | UUID | ✔ | khách trả tiền. Payment cũng chấp nhận tên `passengerId` |
 | `driverId` | UUID | ✔ | |
-| `fareAmount` | number (VND) | ✔ | số tiền cần thu, > 0 |
+| `fareAmount` | number (VND) | ✔ | số tiền cần thu, > 0, tối đa 2 chữ số thập phân |
 | `completedAt` | ISO-8601 UTC | ✔ | |
 
 ```json
@@ -136,6 +154,7 @@ Thu tiền thành công.
 | `paymentId` | UUID | ✔ | |
 | `tripId` | UUID | ✔ | |
 | `riderId` | UUID | ✔ | |
+| `driverId` | UUID | | để Trip Service không phải tra lại |
 | `amount` | number (VND) | ✔ | |
 | `paidAt` | ISO-8601 UTC | ✔ | |
 
@@ -164,6 +183,7 @@ Thu tiền thất bại. Trip Service nhận event này để chạy bước bù
 | `paymentId` | UUID | ✔ | |
 | `tripId` | UUID | ✔ | |
 | `riderId` | UUID | ✔ | |
+| `driverId` | UUID | | tài xế cần giải phóng ở bước bù trừ |
 | `amount` | number (VND) | ✔ | |
 | `reason` | enum string | ✔ | `INSUFFICIENT_FUNDS` \| `PAYMENT_DECLINED` \| `INTERNAL_ERROR` |
 | `failedAt` | ISO-8601 UTC | ✔ | |
@@ -228,3 +248,4 @@ Trip Service đã hoàn tác chuyến sau khi thanh toán thất bại. Notifica
 |---|---|---|
 | 2026-10-18 | TV Payment/Notification | Bản nháp đầu tiên |
 | 2026-10-25 | TV Payment/Notification | Chốt mọi ID là UUID (idempotency key = `tripId`), thêm quy ước Correlation ID và tài khoản RabbitMQ (mục 1.5) |
+| 2026-10-31 | TV Payment/Notification | Thêm quy ước retry, DLQ, outbox (mục 1.6); `payment.*` có thêm `driverId`; chấp nhận `passengerId` thay cho `riderId` |
