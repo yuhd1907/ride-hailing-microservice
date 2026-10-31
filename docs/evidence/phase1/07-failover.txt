@@ -1,0 +1,3 @@
+﻿Truoc khi dung: payments=200 trips=200
+Sau khi dung:   payments=503 trips=503
+Sau khi chay lai: payments=200 trips=200

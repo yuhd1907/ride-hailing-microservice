@@ -1,0 +1,6 @@
+﻿GET /users/ping -> 200 UP
+GET /drivers/ping -> 200 UP
+GET /trips/ping -> 200 {"status":"UP","service":"trip-service"}
+GET /matching/ping -> 200 {"status":"UP","service":"matching-service"}
+GET /payments/ping -> 200 UP
+GET /notifications/ping -> 200 UP
