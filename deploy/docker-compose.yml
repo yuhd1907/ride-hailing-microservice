@@ -1,0 +1,396 @@
+# =====================================================================
+#  Ride-hailing microservice - Docker Compose cho ca nhom
+#  Chu file: Thanh vien 3. Moi thay doi file nay phai qua review khi merge vao develop.
+#
+#  Chay tu thu muc goc repo:
+#    docker compose -f deploy/docker-compose.yml --env-file .env up --build
+#  Chay them instance thu 2 cua driver-service:
+#    docker compose -f deploy/docker-compose.yml --env-file .env --profile scale up --build
+#
+#  Quy uoc khi them / sua service:
+#    - Moi service co thu muc rieng o goc repo, build bang ../<ten-service>.
+#    - Cong ben trong container = cong host, doc tu SERVER_PORT (Java) hoac <TEN>_SERVICE_PORT (Node).
+#    - Moi service co DB rieng <ten>_postgres (postgres:16-alpine) va dang ky Eureka (eureka-server:8761).
+#    - Service depends_on eureka_server, DB cua minh, rabbitmq voi condition: service_healthy.
+#    - Java: SPRING_DATASOURCE_*, SPRING_RABBITMQ_*. Node: DATABASE_URL, RABBITMQ_URL, EUREKA_HOST.
+#    - Mat khau / secret doc tu .env (xem .env.example), khong ghi cung.
+#
+#  Bang cong (host):
+#    eureka-server        8761
+#    api-gateway          8080
+#    user-service         8081   db 5433
+#    driver-service       8082   db 5434   (instance 2: 18082)
+#    trip-service         8083   db 5435
+#    matching-service     8084   db 5436
+#    payment-service      8085   db 5437
+#    notification-service 8086   db 5438
+#    redis 6379, rabbitmq 5672 / 15672 (management UI)
+# =====================================================================
+
+name: ride-hailing-microservice
+
+x-postgres: &postgres
+  image: postgres:16-alpine
+  restart: unless-stopped
+  networks:
+    - ride-hailing-net
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+    interval: 5s
+    timeout: 3s
+    retries: 10
+
+services:
+  eureka_server:
+    build: ../eureka-server
+    restart: unless-stopped
+    ports:
+      - "${EUREKA_PORT:-8761}:8761"
+    networks:
+      ride-hailing-net:
+        # Tomcat tu choi ten host co dau gach duoi (eureka_server) voi loi 400,
+        # nen cac service goi Eureka qua ten khac co gach ngang: eureka-server
+        aliases:
+          - eureka-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8761/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  user_postgres:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${USER_DB_NAME:-user_db}
+      POSTGRES_USER: ${USER_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD:-postgres_password}
+    ports:
+      - "${USER_DB_PORT:-5433}:5432"
+    volumes:
+      - user_pg_data:/var/lib/postgresql/data
+      - ../user-service/src/main/resources/db/migration/V1__init_user.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ../scripts/seed-data.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+
+  driver_postgres:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${DRIVER_DB_NAME:-driver_db}
+      POSTGRES_USER: ${DRIVER_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DRIVER_DB_PASSWORD:-postgres_password}
+    ports:
+      - "${DRIVER_DB_PORT:-5434}:5432"
+    volumes:
+      - driver_pg_data:/var/lib/postgresql/data
+      - ../driver-service/src/main/resources/db/migration/V1__init_driver.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ../scripts/seed-data.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+
+  trip_postgres:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${TRIP_DB_NAME:-trip_db}
+      POSTGRES_USER: ${TRIP_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${TRIP_DB_PASSWORD:-postgres_password}
+    ports:
+      - "${TRIP_DB_PORT:-5435}:5432"
+    volumes:
+      - trip_pg_data:/var/lib/postgresql/data
+      - ../trip-service/trip_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+
+  matching_postgres:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${MATCHING_DB_NAME:-matching_db}
+      POSTGRES_USER: ${MATCHING_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${MATCHING_DB_PASSWORD:-postgres_password}
+    ports:
+      - "${MATCHING_DB_PORT:-5436}:5432"
+    volumes:
+      - matching_pg_data:/var/lib/postgresql/data
+      - ../matching-service/matching_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+
+  payment_postgres:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${PAYMENT_DB_NAME:-payment_db}
+      POSTGRES_USER: ${PAYMENT_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD:-postgres_password}
+    ports:
+      - "${PAYMENT_DB_PORT:-5437}:5432"
+    volumes:
+      - payment_pg_data:/var/lib/postgresql/data
+
+  notification_postgres:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME:-notification_db}
+      POSTGRES_USER: ${NOTIFICATION_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-postgres_password}
+    ports:
+      - "${NOTIFICATION_DB_PORT:-5438}:5432"
+    volumes:
+      - notification_pg_data:/var/lib/postgresql/data
+
+  api_gateway:
+    build: ../api-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      SERVER_PORT: 8080
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATA_REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  user_service:
+    build: ../user-service
+    restart: unless-stopped
+    ports:
+      - "${USER_SERVICE_PORT:-8081}:8081"
+    environment:
+      SERVER_PORT: 8081
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user_postgres:5432/${USER_DB_NAME:-user_db}
+      SPRING_DATASOURCE_USERNAME: ${USER_DB_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:-postgres_password}
+      SPRING_DATA_REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-3600000}
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+      user_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  driver_service_1: &driver-service
+    build: ../driver-service
+    restart: unless-stopped
+    ports:
+      - "${DRIVER_SERVICE_PORT_1:-8082}:8082"
+    environment: &driver-environment
+      SERVER_PORT: 8082
+      EUREKA_INSTANCE_INSTANCE_ID: driver-service-instance-1
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://driver_postgres:5432/${DRIVER_DB_NAME:-driver_db}
+      SPRING_DATASOURCE_USERNAME: ${DRIVER_DB_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${DRIVER_DB_PASSWORD:-postgres_password}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+      driver_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  driver_service_2:
+    <<: *driver-service
+    profiles: [scale]
+    ports:
+      - "${DRIVER_SERVICE_PORT_2:-18082}:8082"
+    environment:
+      <<: *driver-environment
+      EUREKA_INSTANCE_INSTANCE_ID: driver-service-instance-2
+
+  # ---------- Thanh vien 2: Trip / Matching (Node.js) ----------
+  trip_service:
+    build: ../trip-service
+    restart: unless-stopped
+    ports:
+      - "${TRIP_SERVICE_PORT:-8083}:8083"
+    environment:
+      TRIP_SERVICE_PORT: 8083
+      DATABASE_URL: postgres://${TRIP_DB_USER:-postgres}:${TRIP_DB_PASSWORD:-postgres_password}@trip_postgres:5432/${TRIP_DB_NAME:-trip_db}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
+      EUREKA_HOST: eureka-server
+      EUREKA_PORT: 8761
+      NODE_ENV: production
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+      trip_postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8083/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  matching_service:
+    build: ../matching-service
+    restart: unless-stopped
+    ports:
+      - "${MATCHING_SERVICE_PORT:-8084}:8084"
+    environment:
+      MATCHING_SERVICE_PORT: 8084
+      DATABASE_URL: postgres://${MATCHING_DB_USER:-postgres}:${MATCHING_DB_PASSWORD:-postgres_password}@matching_postgres:5432/${MATCHING_DB_NAME:-matching_db}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
+      EUREKA_HOST: eureka-server
+      EUREKA_PORT: 8761
+      NODE_ENV: production
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+      matching_postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8084/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------- Thanh vien 3: Payment / Notification (Spring Boot) ----------
+  payment_service:
+    build: ../payment-service
+    restart: unless-stopped
+    ports:
+      - "${PAYMENT_SERVICE_PORT:-8085}:8085"
+    environment:
+      SERVER_PORT: 8085
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://payment_postgres:5432/${PAYMENT_DB_NAME:-payment_db}
+      SPRING_DATASOURCE_USERNAME: ${PAYMENT_DB_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${PAYMENT_DB_PASSWORD:-postgres_password}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+      payment_postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8085/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  notification_service:
+    build: ../notification-service
+    restart: unless-stopped
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-8086}:8086"
+    environment:
+      SERVER_PORT: 8086
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://notification_postgres:5432/${NOTIFICATION_DB_NAME:-notification_db}
+      SPRING_DATASOURCE_USERNAME: ${NOTIFICATION_DB_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-postgres_password}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-guest}
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+      notification_postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8086/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+networks:
+  ride-hailing-net:
+    driver: bridge
+
+volumes:
+  user_pg_data:
+  driver_pg_data:
+  trip_pg_data:
+  matching_pg_data:
+  payment_pg_data:
+  notification_pg_data:
+  redis_data:
