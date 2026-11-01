@@ -28,7 +28,11 @@ public class Notification {
     @Column(name = "recipient_id", nullable = false)
     private UUID recipientId;
 
-    // Chuỗi tự do (DRIVER_ASSIGNED, PAYMENT_SUCCESS, ...) để thêm loại mới không cần
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recipient_role", length = 20)
+    private RecipientRole recipientRole;
+
+    // Chuỗi tự do (DRIVER_ASSIGNED, PAYMENT_SUCCEEDED, ...) để thêm loại mới không cần
     // migration
     @Column(name = "type", length = 50, nullable = false)
     private String type;
@@ -40,6 +44,15 @@ public class Notification {
     @Column(name = "content", nullable = false, columnDefinition = "text")
     private String content;
 
+    @Column(name = "event_id")
+    private UUID eventId;
+
+    @Column(name = "trip_id")
+    private UUID tripId;
+
+    @Column(name = "correlation_id", length = 128)
+    private String correlationId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamptz")
     private Instant createdAt;
@@ -47,11 +60,16 @@ public class Notification {
     protected Notification() {
     }
 
-    public Notification(UUID recipientId, String type, NotificationChannel channel, String content) {
+    public Notification(UUID recipientId, RecipientRole recipientRole, String type, NotificationChannel channel,
+            String content, UUID eventId, UUID tripId, String correlationId) {
         this.recipientId = recipientId;
+        this.recipientRole = recipientRole;
         this.type = type;
         this.channel = channel;
         this.content = content;
+        this.eventId = eventId;
+        this.tripId = tripId;
+        this.correlationId = correlationId;
     }
 
     public UUID getId() {
@@ -60,6 +78,10 @@ public class Notification {
 
     public UUID getRecipientId() {
         return this.recipientId;
+    }
+
+    public RecipientRole getRecipientRole() {
+        return this.recipientRole;
     }
 
     public String getType() {
@@ -72,6 +94,18 @@ public class Notification {
 
     public String getContent() {
         return this.content;
+    }
+
+    public UUID getEventId() {
+        return this.eventId;
+    }
+
+    public UUID getTripId() {
+        return this.tripId;
+    }
+
+    public String getCorrelationId() {
+        return this.correlationId;
     }
 
     public Instant getCreatedAt() {
