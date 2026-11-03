@@ -41,6 +41,17 @@ class UserAuthenticationTest {
     }
 
     @Test
+    void seedDriver1AccountMatchesDriverProfileUuidAcrossDatabases() throws Exception {
+        String sql = Files.readString(Path.of("../scripts/seed-data.sql"));
+        assertTrue(sql.contains("('fd699acc-6544-44a9-9634-5396060c61b8', 'driver1@ridehail.com'"),
+                "driver1 in user_db must share ID fd699acc-6544-44a9-9634-5396060c61b8");
+        assertTrue(sql.contains("('fd699acc-6544-44a9-9634-5396060c61b8', 'ROLE_DRIVER')"),
+                "driver1 role in user_db must share ID fd699acc-6544-44a9-9634-5396060c61b8");
+        assertTrue(sql.contains("('fd699acc-6544-44a9-9634-5396060c61b8', 'Phạm Minh Đức', '0934567890'"),
+                "driver1 in driver_db must share ID fd699acc-6544-44a9-9634-5396060c61b8");
+    }
+
+    @Test
     void unknownEmailAndIncorrectPasswordHaveTheSameAuthenticationError() {
         var repository = mock(UserRepository.class);
         var encoder = mock(PasswordEncoder.class);

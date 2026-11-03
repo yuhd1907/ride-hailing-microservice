@@ -81,7 +81,7 @@ public class DriverLocationRedisServiceImpl implements DriverLocationRedisServic
             }
         }
 
-        log.info("Redis GEO: Tìm thấy {} tài xế trong bán kính {}km quanh ({}, {})", nearbyDrivers.size(), radiusKm,
+        log.debug("Redis GEO: Tìm thấy {} tài xế trong bán kính {}km quanh ({}, {})", nearbyDrivers.size(), radiusKm,
                 latitude, longitude);
         return nearbyDrivers;
     }

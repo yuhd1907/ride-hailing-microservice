@@ -1,0 +1,29 @@
+================================================================================
+MINH CHỨNG TEST BẢO MẬT (RBAC, OWNERSHIP, VALIDATION, JWT LOGOUT BLACKLIST)
+Command: node tests/test-security.js
+Gateway: http://localhost:8080 -> user-service (:8081), driver-service (:8082)
+================================================================================
+
+--- BẮT ĐẦU TEST BẢO MẬT (GATEWAY + USER SERVICE + DRIVER SERVICE) ---
+┌─────────┬────────────────────────────────────────────────────────────────────────────────┬──────────┬────────┬────────┬────────────────────────────────────────────────────────────────────┐
+│ (index) │ testCase                                                                       │ expected │ actual │ result │ detail                                                             │
+├─────────┼────────────────────────────────────────────────────────────────────────────────┼──────────┼────────┼────────┼────────────────────────────────────────────────────────────────────┤
+│ 0       │ '1. Đăng nhập passenger1@ridehail.com'                                         │ 200      │ 200    │ 'PASS' │ 'Nhận JWT với ROLE_PASSENGER'                                      │
+│ 1       │ '2. Đăng nhập driver1@ridehail.com'                                            │ 200      │ 200    │ 'PASS' │ 'Nhận JWT với ROLE_DRIVER'                                         │
+│ 2       │ '3. Hành khách bật trạng thái nhận chuyến (POST /drivers/{id}/go-online)'      │ 403      │ 403    │ 'PASS' │ 'Chỉ tài khoản có vai trò ROLE_DRIVER mới có hồ sơ tài xế'         │
+│ 3       │ '4. Hành khách bật trạng thái qua /drivers/me/go-online'                       │ 403      │ 403    │ 'PASS' │ 'Chỉ tài khoản có vai trò ROLE_DRIVER mới có hồ sơ tài xế'         │
+│ 4       │ '5. Hành khách tạo hồ sơ tài xế (POST /drivers)'                               │ 403      │ 403    │ 'PASS' │ 'Chỉ tài khoản có vai trò ROLE_DRIVER mới có hồ sơ tài xế'         │
+│ 5       │ '6. Tài xế 1 bật nhận chuyến của Tài xế 2 (POST /drivers/{otherId}/go-online)' │ 403      │ 403    │ 'PASS' │ 'Chỉ tài xế đó mới được thao tác trên hồ sơ của chính mình'        │
+│ 6       │ '7. Tài xế 1 cập nhật vị trí của Tài xế 2 (POST /drivers/{otherId}/location)'  │ 403      │ 403    │ 'PASS' │ 'Chỉ tài xế đó mới được thao tác trên hồ sơ của chính mình'        │
+│ 7       │ '8. Người dùng sửa hồ sơ người dùng khác (PUT /users/{otherId})'               │ 403      │ 403    │ 'PASS' │ 'Chỉ được cập nhật hồ sơ của chính mình'                           │
+│ 8       │ '9. Tọa độ vĩ độ không hợp lệ (latitude = 95.0 > 90)'                          │ 400      │ 400    │ 'PASS' │ 'Dữ liệu đầu vào không hợp lệ'                                     │
+│ 9       │ '10. Tọa độ kinh độ không hợp lệ (longitude = -195.0 < -180)'                  │ 400      │ 400    │ 'PASS' │ 'Dữ liệu đầu vào không hợp lệ'                                     │
+│ 10      │ '11. UUID tài xế sai định dạng (GET /drivers/not-a-valid-uuid)'                │ 400      │ 400    │ 'PASS' │ 'Dữ liệu đầu vào không hợp lệ'                                     │
+│ 11      │ '12. Dữ liệu tạo hồ sơ tài xế sai định dạng (biển số rỗng / loại xe sai)'      │ 400      │ 400    │ 'PASS' │ 'Dữ liệu đầu vào không hợp lệ'                                     │
+│ 12      │ '13. Trước khi đăng xuất: GET /users/me hoạt động bình thường'                 │ 200      │ 200    │ 'PASS' │ 'OK'                                                               │
+│ 13      │ '14. Đăng xuất token (POST /auth/logout)'                                      │ 200      │ 200    │ 'PASS' │ 'Đăng xuất thành công. Token đã bị thu hồi.'                       │
+│ 14      │ '15. Sau khi đăng xuất: dùng lại token gọi GET /users/me bị từ chối'           │ 401      │ 401    │ 'PASS' │ 'Token nằm trong Redis Blacklist -> Gateway chặn 401 Unauthorized' │
+│ 15      │ '16. Sau khi đăng xuất: dùng lại token gọi GET /drivers/me bị từ chối'         │ 401      │ 401    │ 'PASS' │ 'Token nằm trong Redis Blacklist -> Gateway chặn 401 Unauthorized' │
+└─────────┴────────────────────────────────────────────────────────────────────────────────┴──────────┴────────┴────────┴────────────────────────────────────────────────────────────────────┘
+
+KẾT LUẬN: TẤT CẢ 16 KỊCH BẢN BẢO MẬT ĐỀU THÀNH CÔNG (PASS)!

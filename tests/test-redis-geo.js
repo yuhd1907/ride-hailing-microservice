@@ -1,11 +1,12 @@
 const assert = require('node:assert/strict');
 
-async function request(url, method = 'GET', body) {
+async function request(url, method = 'GET', body, extraHeaders = {}) {
     const response = await fetch(url, {
         method,
         headers: {
             'Content-Type': 'application/json',
-            ...(process.env.AUTH_TOKEN ? { Authorization: `Bearer ${process.env.AUTH_TOKEN}` } : {})
+            ...(process.env.AUTH_TOKEN ? { Authorization: `Bearer ${process.env.AUTH_TOKEN}` } : {}),
+            ...extraHeaders
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(10000)
@@ -17,22 +18,25 @@ async function request(url, method = 'GET', body) {
 }
 
 const gateway = process.env.GATEWAY_URL || 'http://localhost:8080';
+const driverService = process.env.DRIVER_SERVICE_URL || 'http://localhost:8082';
 const positions = [
-    { id: 'fd699acc-6544-44a9-9634-5396060c61b8', latitude: 21.028511, longitude: 105.854167 },
-    { id: '5e11b65c-36ef-47cd-9019-9db767cf8d01', latitude: 21.035, longitude: 105.85 },
-    { id: 'c61fea6d-3478-482f-a405-73cc2d71afe9', latitude: 21.02, longitude: 105.86 }
+    { id: 'fd699acc-6544-44a9-9634-5396060c61b8', latitude: 21.028511, longitude: 105.854167, viaGateway: true },
+    { id: '5e11b65c-36ef-47cd-9019-9db767cf8d01', latitude: 21.035, longitude: 105.85, viaGateway: false },
+    { id: 'c61fea6d-3478-482f-a405-73cc2d71afe9', latitude: 21.02, longitude: 105.86, viaGateway: false }
 ];
 async function main() {
-    assert.ok(process.env.AUTH_TOKEN, 'Set AUTH_TOKEN to a valid login token before updating driver locations');
-    for (const { id, latitude, longitude } of positions) {
+    assert.ok(process.env.AUTH_TOKEN, 'Set AUTH_TOKEN to a valid driver1 login token before updating driver locations');
+    for (const { id, latitude, longitude, viaGateway } of positions) {
+        const base = viaGateway ? gateway : driverService;
+        const ownerHeaders = viaGateway ? {} : { 'X-User-Id': id, 'X-User-Roles': 'ROLE_DRIVER' };
         const driver = await request(`${gateway}/drivers/${id}`);
         assert.equal(driver.status, 200, `${id} does not exist`);
         if (driver.data.status === 'OFFLINE') {
-            assert.equal((await request(`${gateway}/drivers/${id}/go-online`, 'POST')).status, 200);
+            assert.equal((await request(`${base}/drivers/${id}/go-online`, 'POST', undefined, ownerHeaders)).status, 200);
         } else {
             assert.equal(driver.data.status, 'AVAILABLE', `${id} is handling another trip`);
         }
-        const result = await request(`${gateway}/drivers/${id}/location`, 'POST', { latitude, longitude });
+        const result = await request(`${base}/drivers/${id}/location`, 'POST', { latitude, longitude }, ownerHeaders);
         assert.equal(result.status, 200, `Failed location update for ${id}`);
     }
     const result = await request(`${gateway}/drivers/available?lat=21.0285&lng=105.8541&radius=3`);

@@ -60,6 +60,15 @@ class JwtAuthAndBlacklistFilterTest {
         verifyNoInteractions(redis);
     }
 
+    @Test
+    void driverSelfProfileReadRequiresAuthentication() {
+        var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/drivers/me"));
+        filter.filter(exchange, chain).block(Duration.ofSeconds(2));
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        assertNull(forwarded.get());
+        verifyNoInteractions(redis);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = { "/auth/login-extra", "/auth/register/admin", "/drivers-admin" })
     void publicPathsAreNotPrefixWildcards(String path) {

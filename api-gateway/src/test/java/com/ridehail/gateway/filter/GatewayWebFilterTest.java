@@ -39,9 +39,10 @@ class GatewayWebFilterTest {
             .from(MockServerHttpRequest.get("/ping").header("X-Correlation-ID", "trace-123"));
         new CorrelationIdFilter().filter(exchange, next -> {
             assertEquals("trace-123", next.getRequest().getHeaders().getFirst("X-Correlation-ID"));
-            return Mono.empty();
+            next.getResponse().getHeaders().add("X-Correlation-ID", "trace-123");
+            return next.getResponse().setComplete();
         }).block();
-        assertEquals("trace-123", exchange.getResponse().getHeaders().getFirst("X-Correlation-ID"));
+        assertEquals(java.util.List.of("trace-123"), exchange.getResponse().getHeaders().get("X-Correlation-ID"));
     }
 
 }

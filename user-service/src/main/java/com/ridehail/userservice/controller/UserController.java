@@ -63,7 +63,23 @@ public class UserController {
     }
 
     /**
-     * PUT /users/{id} - Cập nhật hồ sơ cá nhân
+     * PUT /users/me - Cập nhật hồ sơ của chính người dùng đang đăng nhập
+     */
+    @PutMapping("/me")
+    public ResponseEntity<UserResponse> updateMyProfile(
+            @RequestHeader(value = "X-User-Id", required = false) UUID requesterId,
+            @Valid @RequestBody UpdateProfileRequest request) {
+        if (requesterId == null) {
+            throw new UnauthorizedException("Không có thông tin xác thực người dùng");
+        }
+        MDC.put("action", "UPDATE_PROFILE");
+
+        UserResponse response = userService.updateProfile(requesterId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * PUT /users/{id} - Cập nhật hồ sơ cá nhân (chỉ cho phép sửa hồ sơ của chính mình)
      */
     @PutMapping("/{id}")
     public ResponseEntity<UserResponse> updateProfile(@PathVariable UUID id,

@@ -19,6 +19,7 @@ bin/
 # OS
 .DS_Store
 Thumbs.db
+*.pdf
 
 # Logs
 logs/
