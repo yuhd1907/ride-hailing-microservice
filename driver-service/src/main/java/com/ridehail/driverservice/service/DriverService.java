@@ -3,11 +3,15 @@ package com.ridehail.driverservice.service;
 import java.util.List;
 import java.util.UUID;
 
+import com.ridehail.driverservice.dto.request.CreateDriverProfileRequest;
 import com.ridehail.driverservice.dto.request.LocationUpdateRequest;
 import com.ridehail.driverservice.dto.request.ReserveDriverRequest;
 import com.ridehail.driverservice.dto.response.DriverResponse;
 
 public interface DriverService {
+
+    DriverResponse createDriverProfile(UUID driverId, CreateDriverProfileRequest request, String fallbackFullName,
+            String fallbackPhone);
 
     DriverResponse getDriverById(UUID driverId);
 
@@ -26,6 +30,8 @@ public interface DriverService {
     DriverResponse goOnline(UUID driverId);
 
     DriverResponse goOffline(UUID driverId);
+
+    int releaseExpiredReservations();
 
     String getInstanceId();
 
