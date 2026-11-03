@@ -73,7 +73,7 @@ public class UserServiceImpl implements UserService {
 
         User savedUser = userRepository.save(user);
         MDC.put("userId", savedUser.getId().toString());
-        log.info("Cập nhật hồ sơ thành công userId={}", savedUser.getId());
+        log.debug("Cập nhật hồ sơ thành công userId={}", savedUser.getId());
 
         return userMapper.toResponse(savedUser);
     }
