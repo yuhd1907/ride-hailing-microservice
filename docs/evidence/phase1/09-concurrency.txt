@@ -1,0 +1,29 @@
+================================================================================
+MINH CHỨNG TEST TƯƠNG TRANH: HAI KHÁCH CÙNG GIỮ MỘT TÀI XẾ (2 INSTANCE DRIVER)
+Command: node tests/test-concurrency.js
+Instances:
+  - driver-service-instance-1 (http://localhost:8082)
+  - driver-service-instance-2 (http://localhost:18082)
+Database: PostgreSQL (driver_db dùng chung giữa 2 instance)
+Driver ID: fd699acc-6544-44a9-9634-5396060c61b8 (Phạm Minh Đức - 30A-12345)
+================================================================================
+
+┌─────────┬────────┬─────────────────────────────┐
+│ (index) │ status │ instance                    │
+├─────────┼────────┼─────────────────────────────┤
+│ 0       │ 200    │ 'driver-service-instance-1' │
+│ 1       │ 409    │ 'driver-service-instance-2' │
+└─────────┴────────┴─────────────────────────────┘
+PASS: two Driver instances produced one 200 and one 409.
+
+--- LOG TỪ DRIVER-SERVICE-INSTANCE-1 (:8082) ---
+2026-11-03 23:45:41.368 [main] [driver-service-instance-1] [N/A] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8082 (http) with context path ''
+2026-11-03 23:45:41.412 [main] [driver-service-instance-1] [N/A] INFO  c.r.d.DriverServiceApplication - Started DriverServiceApplication in 26.946 seconds (process running for 29.038)
+2026-11-03 23:45:56.934 [http-nio-8082-exec-3] [driver-service-instance-1] [5c0a6c45-549e-41d7-bb84-ca517d793f2a] DEBUG c.r.d.s.i.DriverLocationRedisServiceImpl - Redis GEO: Xóa driverId=fd699acc-6544-44a9-9634-5396060c61b8 khỏi danh sách vị trí
+2026-11-03 23:45:56.938 [http-nio-8082-exec-3] [driver-service-instance-1] [5c0a6c45-549e-41d7-bb84-ca517d793f2a] INFO  c.r.d.service.impl.DriverServiceImpl - [driver-service-instance-1] Giữ driverId=fd699acc-6544-44a9-9634-5396060c61b8 thành công cho tripId=4df11c6b-f6ff-41c6-b679-d19555d59ab1
+2026-11-03 23:45:57.091 [http-nio-8082-exec-6] [driver-service-instance-1] [f474d2d3-85c6-41d4-bd0f-38869419d794] INFO  c.r.d.service.impl.DriverServiceImpl - [driver-service-instance-1] Giải phóng driverId=fd699acc-6544-44a9-9634-5396060c61b8 thành công
+
+--- LOG TỪ DRIVER-SERVICE-INSTANCE-2 (:18082) ---
+2026-11-03 23:45:54.882 [main] [driver-service-instance-2] [N/A] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 18082 (http) with context path ''
+2026-11-03 23:45:54.916 [main] [driver-service-instance-2] [N/A] INFO  c.r.d.DriverServiceApplication - Started DriverServiceApplication in 11.534 seconds (process running for 12.398)
+2026-11-03 23:45:57.010 [http-nio-18082-exec-2] [driver-service-instance-2] [bf2027e3-09ec-4f3c-ab5c-4d1820771457] WARN  c.r.d.service.impl.DriverServiceImpl - [driver-service-instance-2] CONFLICT: driverId=fd699acc-6544-44a9-9634-5396060c61b8 không thể giữ (đã bị giữ hoặc không available)

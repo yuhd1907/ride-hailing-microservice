@@ -1,12 +1,13 @@
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 
-async function request(url, method = 'GET', body) {
+async function request(url, method = 'GET', body, extraHeaders = {}) {
     const response = await fetch(url, {
         method,
         headers: {
             'Content-Type': 'application/json',
-            ...(process.env.AUTH_TOKEN ? { Authorization: `Bearer ${process.env.AUTH_TOKEN}` } : {})
+            ...(process.env.AUTH_TOKEN ? { Authorization: `Bearer ${process.env.AUTH_TOKEN}` } : {}),
+            ...extraHeaders
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(10000)
@@ -25,7 +26,7 @@ async function main() {
     const current = await request(`${first}/drivers/${driverId}`);
     assert.equal(current.status, 200, 'Test driver is unavailable');
     if (current.data.status === 'OFFLINE') {
-        assert.equal((await request(`${first}/drivers/${driverId}/go-online`, 'POST')).status, 200);
+        assert.equal((await request(`${first}/drivers/${driverId}/go-online`, 'POST', undefined, { 'X-User-Id': driverId, 'X-User-Roles': 'ROLE_DRIVER' })).status, 200);
     } else {
         assert.equal(current.data.status, 'AVAILABLE', 'Use an AVAILABLE demo driver, not a driver handling another trip');
     }
