@@ -1,0 +1,119 @@
+Executed: 2026-11-10 (Asia/Bangkok)
+Runtime: Node v22.16.0
+Command: node --test scripts/trip-matching.test.js
+Scope: HTTP with mocked persistence; unit/contract tests with mocked PostgreSQL, RabbitMQ and Eureka/Driver.
+Docker/full-stack test: NOT RUN. Docker unavailable. develop lacks Payment/Notification Saga event handlers.
+Additional checks: npm ci in both services; node --check all service JS files; PowerShell publish script parsed successfully.
+
+TAP version 13
+# Subtest: trip-service: envelope, AMQP metadata and broker confirmation
+ok 1 - trip-service: envelope, AMQP metadata and broker confirmation
+  ---
+  duration_ms: 2.8717
+  type: 'test'
+  ...
+# Subtest: trip-service: malformed events DLQ immediately; transient errors retry three times
+ok 2 - trip-service: malformed events DLQ immediately; transient errors retry three times
+  ---
+  duration_ms: 1.7736
+  type: 'test'
+  ...
+# Subtest: trip-service: durable queues, DLX, manual acknowledgements
+ok 3 - trip-service: durable queues, DLX, manual acknowledgements
+  ---
+  duration_ms: 0.8362
+  type: 'test'
+  ...
+# Subtest: matching-service: envelope, AMQP metadata and broker confirmation
+ok 4 - matching-service: envelope, AMQP metadata and broker confirmation
+  ---
+  duration_ms: 1.9422
+  type: 'test'
+  ...
+# Subtest: matching-service: malformed events DLQ immediately; transient errors retry three times
+ok 5 - matching-service: malformed events DLQ immediately; transient errors retry three times
+  ---
+  duration_ms: 1.0036
+  type: 'test'
+  ...
+# Subtest: matching-service: durable queues, DLX, manual acknowledgements
+ok 6 - matching-service: durable queues, DLX, manual acknowledgements
+  ---
+  duration_ms: 0.9773
+  type: 'test'
+  ...
+# Subtest: validation rejects missing fields, invalid UUIDs, amounts and timestamps
+ok 7 - validation rejects missing fields, invalid UUIDs, amounts and timestamps
+  ---
+  duration_ms: 0.4262
+  type: 'test'
+  ...
+# Subtest: payment success confirms once, persists paymentId and history
+ok 8 - payment success confirms once, persists paymentId and history
+  ---
+  duration_ms: 1.1197
+  type: 'test'
+  ...
+# Subtest: compensation releases once and preserves correlation across duplicate events
+ok 9 - compensation releases once and preserves correlation across duplicate events
+  ---
+  duration_ms: 0.9665
+  type: 'test'
+  ...
+# Subtest: release failure rolls back deduplication and permits retry
+ok 10 - release failure rolls back deduplication and permits retry
+  ---
+  duration_ms: 1.0726
+  type: 'test'
+  ...
+# Subtest: late or mismatched payment cannot cancel a confirmed trip
+ok 11 - late or mismatched payment cannot cancel a confirmed trip
+  ---
+  duration_ms: 0.8247
+  type: 'test'
+  ...
+# Subtest: service discovery uses UP instances, correlation and no release body
+ok 12 - service discovery uses UP instances, correlation and no release body
+  ---
+  duration_ms: 1.0168
+  type: 'test'
+  ...
+# Subtest: release treats state conflicts as complete and retries network/server failures
+ok 13 - release treats state conflicts as complete and retries network/server failures
+  ---
+  duration_ms: 1.5205
+  type: 'test'
+  ...
+# Subtest: outbox is committed before publish and retains unconfirmed events
+ok 14 - outbox is committed before publish and retains unconfirmed events
+  ---
+  duration_ms: 1.104
+  type: 'test'
+  ...
+# Subtest: matching reserves with durable identity, emits once, and retries same reservation
+ok 15 - matching reserves with durable identity, emits once, and retries same reservation
+  ---
+  duration_ms: 1.128
+  type: 'test'
+  ...
+# Subtest: HTTP create, complete, duplicate complete and invalid amount
+ok 16 - HTTP create, complete, duplicate complete and invalid amount
+  ---
+  duration_ms: 114.3058
+  type: 'test'
+  ...
+# Subtest: processed_events and business update share transaction; duplicate skips business logic
+ok 17 - processed_events and business update share transaction; duplicate skips business logic
+  ---
+  duration_ms: 0.9195
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 219.95
