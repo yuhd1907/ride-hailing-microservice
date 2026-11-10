@@ -1,0 +1,75 @@
+RideFlow project check - 2026-11-10 (Asia/Bangkok)
+Branch: feature/trip-matching-phase2
+Node.js: v22.23.4; Docker Engine: 29.9.3; Docker Compose: v5.7.0
+
+RESULTS
+- Compose build and config validation: PASS
+- Containers after fault recovery: 17/17 running healthy
+- Node unit/contract tests: 17 passed, 0 failures
+- Java tests: 90 passed, 0 failures/errors/skips; checkFormat PASS
+- Integration checks: 13 passed (real infrastructure, simulated Payment result events)
+- Automatic Payment -> Notification Saga: NOT TESTED / unavailable; missing handlers and queues in current branch
+
+COMMANDS
+node --test scripts/trip-matching.test.js
+docker run --rm --memory=2g --mount type=bind,source=<repo>,target=/workspace --mount type=volume,source=rideflow_gradle_check_cache,target=/home/gradle/.gradle -w /workspace gradle:8.7-jdk17-alpine gradle test checkFormat --no-daemon --max-workers=2
+docker compose --parallel 2 -f deploy/docker-compose.yml --env-file .env --profile scale up -d --build
+node scripts/check-trip-matching-integration.js --faults
+
+NOTES
+- First Gateway build hit a Maven Central TLS download failure; retry succeeded without source changes.
+- Fault test initially republished before Eureka cache refreshed. Test readiness now waits for both Driver instances in Eureka; full integration rerun passed.
+- Test data and 5 intentional malformed/fault messages remain in DLQ for inspection.
+- Local .env uses a generated JWT secret and is excluded from Git.
+
+INTEGRATION OUTPUT
+Integration run 2026-11-10T16:10:49.755Z; real PostgreSQL/RabbitMQ/Eureka/Driver; simulated Payment results; faults=true
+PASS 1: Driver load balancing: driver-service-instance-1, driver-service-instance-2
+PASS 2: Gateway blocks /internal
+PASS 3: Gateway -> Matching -> reserve -> start -> complete; tripId=5a8e00ef-5980-416e-8d7d-54bf6a0a17d9; correlationId=93eafc39-85b7-4517-8a52-d30521d8a399
+PASS 4: Simulated payment.succeeded -> CONFIRMED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 5: Gateway -> Matching -> reserve -> start -> complete; tripId=2d4003cb-bbd6-416f-a64f-6a0fd95f18d1; correlationId=f7e9552f-ed69-4673-91b7-1fa6ec56c804
+PASS 6: Simulated payment.failed -> CANCELLED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 7: Malformed event is dead-lettered
+PASS 8: Gateway -> Matching -> reserve -> start -> complete; tripId=9332a4a8-08bf-425b-8a01-63b670dda92e; correlationId=80eb9b62-a5a5-4803-b06d-ab814c75cd2f
+PASS 9: Simulated payment.failed -> CANCELLED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 10: Payment event survives Trip downtime and is consumed after restart
+PASS 11: Gateway -> Matching -> reserve -> start -> complete; tripId=ea9b6c5d-30ef-4c29-ab17-1007caa6a41c; correlationId=39ed5f25-41e5-437f-a391-03695ab77eee
+PASS 12: Simulated payment.failed -> CANCELLED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 13: Driver outage rolls back DB/dedup, exhausts retry into DLQ, same event succeeds after recovery
+RESULT: 13 integration checks passed. Payment/Notification automatic Saga remains unavailable in this branch.
+
+FINAL CONTAINER HEALTH
+api_gateway running healthy
+driver_postgres running healthy
+driver_service_1 running healthy
+driver_service_2 running healthy
+eureka_server running healthy
+matching_postgres running healthy
+matching_service running healthy
+notification_postgres running healthy
+notification_service running healthy
+payment_postgres running healthy
+payment_service running healthy
+rabbitmq running healthy
+redis running healthy
+trip_postgres running healthy
+trip_service running healthy
+user_postgres running healthy
+user_service running healthy
+
+RUNTIME / RABBITMQ CHECKS
+HTTP 8080/ping: UP
+HTTP 8081/ping: UP
+HTTP 8082/ping: UP
+HTTP 8083/ping: {"status":"UP","service":"trip-service"}
+HTTP 8084/ping: {"status":"UP","service":"matching-service"}
+HTTP 8085/ping: UP
+HTTP 8086/ping: UP
+Eureka: [{"app":"API-GATEWAY","instances":[{"instanceId":"6286f799fdd6:api-gateway:8080","status":"UP"}]},{"app":"PAYMENT-SERVICE","instances":[{"instanceId":"payment-service:d07f3e6f1174:8085","status":"UP"}]},{"app":"MATCHING-SERVICE","instances":[{"instanceId":"matching-service-f97d44577bdf-8084","status":"UP"}]},{"app":"DRIVER-SERVICE","instances":[{"instanceId":"driver-service-instance-1","status":"UP"},{"instanceId":"driver-service-instance-2","status":"UP"}]},{"app":"NOTIFICATION-SERVICE","instances":[{"instanceId":"notification-service:1a6dffef63ea:8086","status":"UP"}]},{"app":"TRIP-SERVICE","instances":[{"instanceId":"trip-service-1e775f3b331f-8083","status":"UP"}]},{"app":"USER-SERVICE","instances":[{"instanceId":"user-service-ba648992-7d60-4b85-b99a-b5bea0569506","status":"UP"}]}]
+RabbitMQ verified: {"name":"trip-service.payment.succeeded","durable":true,"arguments":{"x-dead-letter-exchange":"rideflow.dlx","x-dead-letter-routing-key":"trip-service.payment.succeeded.dlq"},"prefetch":10}
+RabbitMQ verified: {"name":"trip-service.payment.failed","durable":true,"arguments":{"x-dead-letter-exchange":"rideflow.dlx","x-dead-letter-routing-key":"trip-service.payment.failed.dlq"},"prefetch":10}
+RabbitMQ verified: {"name":"trip-service.matching.driver_assigned","durable":true,"arguments":{"x-dead-letter-exchange":"rideflow.dlx","x-dead-letter-routing-key":"trip-service.matching.driver_assigned.dlq"},"prefetch":10}
+RabbitMQ verified: {"name":"matching-service.trip.requested","durable":true,"arguments":{"x-dead-letter-exchange":"rideflow.dlx","x-dead-letter-routing-key":"matching-service.trip.requested.dlq"},"prefetch":10}
+RabbitMQ queues: [{"name":"matching-service.trip.requested","messages":0,"consumers":1},{"name":"matching-service.trip.requested.dlq","messages":0,"consumers":0},{"name":"trip-service.matching.driver_assigned","messages":0,"consumers":1},{"name":"trip-service.matching.driver_assigned.dlq","messages":0,"consumers":0},{"name":"trip-service.payment.failed","messages":0,"consumers":1},{"name":"trip-service.payment.failed.dlq","messages":5,"consumers":0},{"name":"trip-service.payment.succeeded","messages":0,"consumers":1},{"name":"trip-service.payment.succeeded.dlq","messages":0,"consumers":0}]
+LIMITATION: Payment/Notification Saga queues and event handlers are absent; payment results in integration tests were simulated.

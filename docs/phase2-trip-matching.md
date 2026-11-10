@@ -5,6 +5,25 @@
 Node 22; chạy `npm ci` trong `trip-service` và `matching-service`.
 Chạy `node --test scripts/trip-matching.test.js` tại root.
 
+Kiểm tra tích hợp với PostgreSQL, RabbitMQ, Eureka, Gateway và hai instance
+Driver thật:
+
+```powershell
+docker compose -f deploy/docker-compose.yml --env-file .env --profile scale up -d --build
+node scripts/check-trip-matching-integration.js --faults
+```
+
+Chờ các container healthy trước khi chạy script. Script tạo tài khoản/chuyến test
+riêng, kiểm tra cân bằng tải, chặn `/internal`, ghép chuyến, hoàn thành, kết quả
+thanh toán giả lập, chống trùng và DLQ. `--faults` còn dừng/khởi động lại Trip và
+hai Driver để kiểm tra message durable, rollback và retry; bỏ tùy chọn này để chỉ
+chạy luồng thông thường. Script chờ Eureka cập nhật registry trước khi gửi lại
+event sau khi Driver phục hồi. Dữ liệu test được giữ lại để đối chiếu DB.
+
+Kết quả chạy Docker thực tế nằm trong
+`docs/evidence/phase2/trip-matching-docker-check.txt`. Kết quả này kiểm tra phần
+Trip/Matching; event kết quả thanh toán được script publish mô phỏng.
+
 Full stack cần Docker, `.env` từ `.env.example`, và bản Payment/Notification
 đã triển khai consumer/producer Saga. Tại thời điểm triển khai 2026-11-10,
 `origin/develop` ở `445b9dd` mới chứa entity/repository và ping cho hai service
