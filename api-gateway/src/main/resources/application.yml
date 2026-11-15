@@ -17,6 +17,7 @@ spring:
         - name: RequestSize
           args:
             maxSize: 2MB
+        - DedupeResponseHeader=X-Correlation-ID, RETAIN_FIRST
       discovery:
         locator:
           enabled: false
@@ -59,11 +60,16 @@ spring:
                 redis-rate-limiter.burstCapacity: 20
                 key-resolver: "#{@ipKeyResolver}"
 
+        - id: user-internal-route
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/internal/users/**
+
         # === Driver Service Routes (Public) ===
         - id: driver-service-route
           uri: lb://DRIVER-SERVICE
           predicates:
-            - Path=/drivers/**
+            - Path=/drivers,/drivers/**
           filters:
             - name: RequestRateLimiter
               args:

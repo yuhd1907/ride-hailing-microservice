@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.lang.NonNull;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -27,8 +28,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @Override
-    protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
-            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(@NonNull MethodArgumentNotValidException ex,
+            @NonNull HttpHeaders headers, @NonNull HttpStatusCode status, @NonNull WebRequest request) {
         Map<String, Object> body = error(status, "Dữ liệu đầu vào không hợp lệ");
         Map<String, String> fields = new LinkedHashMap<>();
         ex.getBindingResult()
@@ -40,8 +41,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     // Preserve the framework's 400/404/405/415 instead of turning client errors into 500.
     @Override
-    protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
-            HttpStatusCode status, WebRequest request) {
+    protected ResponseEntity<Object> handleExceptionInternal(@NonNull Exception ex, Object body,
+            @NonNull HttpHeaders headers, @NonNull HttpStatusCode status, @NonNull WebRequest request) {
         HttpStatus resolved = HttpStatus.resolve(status.value());
         String message = status.value() == 400 ? "Dữ liệu đầu vào không hợp lệ"
                 : resolved == null ? "HTTP error" : resolved.getReasonPhrase();
@@ -56,6 +57,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DriverConflictException.class)
     public ResponseEntity<Map<String, Object>> driverConflict(DriverConflictException ex) {
         return response(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<Map<String, Object>> unauthorized(UnauthorizedException ex) {
+        return response(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> forbidden(ForbiddenException ex) {
+        return response(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     @ExceptionHandler({ InvalidStateTransitionException.class, InvalidLocationException.class })

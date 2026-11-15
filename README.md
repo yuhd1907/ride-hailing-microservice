@@ -175,14 +175,14 @@ Client gọi API qua Gateway tại `http://localhost:8080`.
 | Nhóm | Endpoint tiêu biểu |
 | --- | --- |
 | Xác thực | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` |
-| Hồ sơ | `GET /users/me`, `GET /users/{id}`, `PUT /users/{id}` |
-| Tài xế | `GET /drivers/{id}`, `GET /drivers/available?lat=...&lng=...&radius=3` |
+| Hồ sơ | `GET /users/me`, `PUT /users/me`, `GET /users/{id}`, `PUT /users/{id}` |
+| Tài xế | `POST /drivers`, `GET /drivers/me`, `GET /drivers/{id}`, `GET /drivers/available?lat=...&lng=...&radius=3` |
 | Vị trí | `POST /drivers/{id}/location` |
-| Phối hợp nội bộ | `/internal/drivers/{id}/reserve`, `/release`, `/start-trip`, `/complete-trip` |
+| Phối hợp nội bộ | `/internal/users/{id}`, `/internal/drivers/{id}/reserve`, `/release`, `/start-trip`, `/complete-trip` |
 
-Đăng ký, đăng nhập và các API GET `/drivers/**` cho phép truy cập công khai. API hồ sơ và các thao tác thay đổi tài xế qua Gateway yêu cầu `Authorization: Bearer <token>`. Tiền tố `/internal/**` bị Gateway chặn từ bên ngoài; các service gọi trực tiếp Driver Service để phối hợp.
+Đăng ký, đăng nhập và các API GET `/drivers/**` (trừ `/drivers/me`) cho phép truy cập công khai. API hồ sơ, tạo/xem hồ sơ tài xế của chính mình (`POST /drivers`, `GET /drivers/me`) và các thao tác thay đổi tài xế qua Gateway yêu cầu `Authorization: Bearer <token>`. Tiền tố `/internal/**` bị Gateway chặn từ bên ngoài; các service gọi trực tiếp Driver Service để phối hợp.
 
-Dữ liệu mẫu nằm trong [scripts/seed-data.sql](scripts/seed-data.sql), được nạp khi khởi tạo volume PostgreSQL mới. Có các tài khoản `passenger1@ridehail.com`, `passenger2@ridehail.com` và `driver1@ridehail.com`, cùng mật khẩu `Password@123`.
+Dữ liệu mẫu nằm trong [scripts/seed-data.sql](scripts/seed-data.sql), được nạp khi khởi tạo volume PostgreSQL mới. Có các tài khoản `passenger1@ridehail.com`, `passenger2@ridehail.com` và `driver1@ridehail.com` (khớp chung ID `fd699acc-6544-44a9-9634-5396060c61b8` ở cả `user_db` và `driver_db`), cùng mật khẩu `Password@123`.
 
 ## Saga thanh toán và thông báo
 

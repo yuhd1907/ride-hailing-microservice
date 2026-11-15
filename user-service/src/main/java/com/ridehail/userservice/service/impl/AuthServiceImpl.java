@@ -76,7 +76,7 @@ public class AuthServiceImpl implements AuthService {
 
         User savedUser = userRepository.save(user);
         MDC.put("userId", savedUser.getId().toString());
-        log.info("Đăng ký thành công userId={} ({})", savedUser.getId(), savedUser.getEmail());
+        log.debug("Đăng ký thành công userId={} ({})", savedUser.getId(), savedUser.getEmail());
 
         return userMapper.toResponse(savedUser);
     }
@@ -98,8 +98,9 @@ public class AuthServiceImpl implements AuthService {
         }
 
         MDC.put("userId", user.getId().toString());
-        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRoles());
-        log.info("Đăng nhập thành công userId={} ({})", user.getId(), user.getEmail());
+        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getFullName(), user.getPhone(),
+                user.getRoles());
+        log.debug("Đăng nhập thành công userId={} ({})", user.getId(), user.getEmail());
 
         return new JwtResponse(token, user.getId(), user.getEmail(), user.getRoles(), jwtService.getExpirationMs());
     }
@@ -112,7 +113,7 @@ public class AuthServiceImpl implements AuthService {
         long remainingMs = jwtService.getRemainingExpirationMs(token);
         tokenBlacklistService.blacklistToken(token, remainingMs);
 
-        log.info("Token đã được đưa vào blacklist, TTL: {}ms", remainingMs);
+        log.debug("Token đã được đưa vào blacklist, TTL: {}ms", remainingMs);
     }
 
 }

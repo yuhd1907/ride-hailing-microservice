@@ -20,7 +20,7 @@ import com.ridehail.userservice.service.AuthService;
 import com.ridehail.userservice.service.UserService;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -45,7 +45,9 @@ class UserHttpErrorsTest {
     void setup() {
         service = mock(UserService.class);
         authService = mock(AuthService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new AuthController(authService), new UserController(service))
+        mvc = MockMvcBuilders
+            .standaloneSetup(new AuthController(authService), new UserController(service),
+                    new UserInternalController(service))
             .setControllerAdvice(new GlobalExceptionHandler())
             .addFilters(new RequestContextFilter("user-test"))
             .build();
@@ -142,6 +144,30 @@ class UserHttpErrorsTest {
         UUID userId = UUID.randomUUID();
         when(service.getUserById(userId)).thenThrow(new ResourceNotFoundException("Missing user"));
         mvc.perform(get("/users/" + userId)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void internalAndPublicUserLookupExposeFullNamePhoneAndRolesForOtherServices() throws Exception {
+        UUID userId = UUID.fromString("26a7f8fe-79a8-49ea-a46a-9529e5c3e381");
+        var response = new UserResponse();
+        response.setId(userId);
+        response.setFullName("Nguyễn Văn An");
+        response.setPhone("0901234567");
+        response.setRoles(java.util.Set.of("ROLE_PASSENGER"));
+        when(service.getUserById(userId)).thenReturn(response);
+
+        mvc.perform(get("/internal/users/" + userId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(userId.toString()))
+            .andExpect(jsonPath("$.fullName").value("Nguyễn Văn An"))
+            .andExpect(jsonPath("$.phone").value("0901234567"))
+            .andExpect(jsonPath("$.role").value("ROLE_PASSENGER"))
+            .andExpect(jsonPath("$.roles[0]").value("ROLE_PASSENGER"));
+
+        mvc.perform(put("/users/me").header("X-User-Id", userId.toString())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"fullName\":\"Nguyễn Văn An Mới\"}")).andExpect(status().isOk());
+        verify(service).updateProfile(eq(userId), any());
     }
 
 }

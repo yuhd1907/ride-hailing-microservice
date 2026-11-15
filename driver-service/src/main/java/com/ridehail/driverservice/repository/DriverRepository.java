@@ -1,5 +1,6 @@
 package com.ridehail.driverservice.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,6 +27,13 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
     List<Driver> findByStatus(DriverStatus status);
 
     List<Driver> findByIdInAndStatus(List<UUID> ids, DriverStatus status);
+
+    boolean existsByLicensePlate(String licensePlate);
+
+    boolean existsByPhone(String phone);
+
+    @Query("select driver from Driver driver where driver.status = com.ridehail.driverservice.entity.DriverStatus.RESERVED and driver.updatedAt < :cutoff")
+    List<Driver> findExpiredReservations(@Param("cutoff") LocalDateTime cutoff);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select driver from Driver driver where driver.id = :driverId")

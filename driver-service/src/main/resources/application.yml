@@ -37,6 +37,14 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT:6379}
       timeout: 5000
 
+# Cấu hình hết hạn vị trí và giữ chỗ tài xế (giây)
+driver:
+  location:
+    max-age-seconds: ${DRIVER_LOCATION_MAX_AGE_SECONDS:300}
+  reservation:
+    timeout-seconds: ${DRIVER_RESERVATION_TIMEOUT_SECONDS:60}
+    cleanup-interval-ms: ${DRIVER_RESERVATION_CLEANUP_INTERVAL_MS:5000}
+
 # Eureka Client
 eureka:
   client:

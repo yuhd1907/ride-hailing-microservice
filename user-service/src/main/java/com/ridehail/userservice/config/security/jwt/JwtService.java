@@ -31,18 +31,30 @@ public class JwtService {
      * Phát hành JWT Token với claims: sub (userId), email, roles
      */
     public String generateToken(UUID userId, String email, Set<String> roles) {
+        return generateToken(userId, email, null, null, roles);
+    }
+
+    /**
+     * Phát hành JWT Token kèm thông tin hồ sơ cơ bản cho các service hạ nguồn
+     */
+    public String generateToken(UUID userId, String email, String fullName, String phone, Set<String> roles) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
-        return Jwts.builder()
+        var builder = Jwts.builder()
             .id(UUID.randomUUID().toString())
             .subject(userId.toString())
             .claim("email", email)
             .claim("roles", String.join(",", roles))
             .issuedAt(now)
-            .expiration(expiry)
-            .signWith(secretKey)
-            .compact();
+            .expiration(expiry);
+        if (fullName != null && !fullName.isBlank()) {
+            builder.claim("fullName", fullName);
+        }
+        if (phone != null && !phone.isBlank()) {
+            builder.claim("phone", phone);
+        }
+        return builder.signWith(secretKey).compact();
     }
 
     /**

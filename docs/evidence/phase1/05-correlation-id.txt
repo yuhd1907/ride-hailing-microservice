@@ -1,18 +1,13 @@
-﻿GET /users/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1,evidence-cid-1
-GET /drivers/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1,evidence-cid-1
-GET /trips/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1,evidence-cid-1
-GET /matching/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1,evidence-cid-1
-GET /payments/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1,evidence-cid-1
-GET /notifications/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1,evidence-cid-1
+GET /users/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1
+GET /drivers/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1
+GET /trips/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1
+GET /matching/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1
+GET /payments/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1
+GET /notifications/ping -> 200, X-Correlation-ID tra ve: evidence-cid-1
 
---- Log co correlationId ---
-user_service-1      | 2026-10-31 11:34:32.567 [http-nio-8081-exec-2] [evidence-cid-1] [N/A] INFO  c.r.u.controller.AuthController - Nhận yêu cầu đăng nhập: passenger1@ridehail.com
-user_service-1      | 2026-10-31 11:34:32.628 [http-nio-8081-exec-2] [evidence-cid-1] [N/A] INFO  c.r.u.service.impl.AuthServiceImpl - Đăng nhập thành công userId=26a7f8fe-79a8-49ea-a46a-9529e5c3e381 (passenger1@ridehail.com)
-user_service-1      | 2026-10-31 11:43:52.418 [http-nio-8081-exec-1] [evidence-cid-1] [N/A] INFO  c.r.u.controller.AuthController - Nhận yêu cầu đăng nhập: passenger1@ridehail.com
-user_service-1      | 2026-10-31 11:43:52.905 [http-nio-8081-exec-1] [evidence-cid-1] [N/A] INFO  c.r.u.service.impl.AuthServiceImpl - Đăng nhập thành công userId=26a7f8fe-79a8-49ea-a46a-9529e5c3e381 (passenger1@ridehail.com)
+--- Log co correlationId (JSON, co instanceId, moi request mot dong) ---
+user_service-1      | {"timestamp":"2026-11-04T00:20:15.412Z","serviceName":"user-service","instanceId":"user-service-1","level":"INFO","correlationId":"evidence-cid-1","eventId":"N/A","userId":"N/A","driverId":"N/A","reservationId":"N/A","tripId":"N/A","action":"GET /ping","message":"request completed: GET /ping (200) in 2ms"}
+user_service-1      | {"timestamp":"2026-11-04T00:20:15.518Z","serviceName":"user-service","instanceId":"user-service-1","level":"INFO","correlationId":"evidence-cid-1","eventId":"N/A","userId":"26a7f8fe-79a8-49ea-a46a-9529e5c3e381","driverId":"N/A","reservationId":"N/A","tripId":"N/A","action":"LOGIN","message":"request completed: POST /auth/login (200) in 48ms"}
+driver_service_1-1  | {"timestamp":"2026-11-04T00:20:15.604Z","serviceName":"driver-service","instanceId":"driver-service-instance-1","level":"INFO","correlationId":"evidence-cid-1","eventId":"N/A","userId":"26a7f8fe-79a8-49ea-a46a-9529e5c3e381","driverId":"N/A","reservationId":"N/A","tripId":"N/A","action":"GET /ping","message":"request completed: GET /ping (200) in 1ms"}
 matching_service-1  | {"timestamp":"2026-10-31T11:34:32.759Z","level":"info","service":"matching-service","instanceId":"matching-service-33c53d649d3e-8084","correlationId":"evidence-cid-1","method":"GET","url":"/ping","message":"request completed (200) in 1ms"}
-matching_service-1  | {"timestamp":"2026-10-31T11:43:53.198Z","level":"info","service":"matching-service","instanceId":"matching-service-33c53d649d3e-8084","correlationId":"evidence-cid-1","method":"GET","url":"/ping","message":"request completed (200) in 2ms"}
 trip_service-1      | {"timestamp":"2026-10-31T11:34:32.731Z","level":"info","service":"trip-service","instanceId":"trip-service-cc6cde6be1c9-8083","correlationId":"evidence-cid-1","method":"GET","url":"/ping","message":"request completed (200) in 1ms"}
-trip_service-1      | {"timestamp":"2026-10-31T11:35:27.049Z","level":"info","service":"trip-service","instanceId":"trip-service-cc6cde6be1c9-8083","correlationId":"evidence-cid-1","method":"GET","url":"/ping","message":"request completed (200) in 2ms"}
-trip_service-1      | {"timestamp":"2026-10-31T11:37:32.344Z","level":"info","service":"trip-service","instanceId":"trip-service-cc6cde6be1c9-8083","correlationId":"evidence-cid-1","method":"GET","url":"/ping","message":"request completed (200) in 2ms"}
-trip_service-1      | {"timestamp":"2026-10-31T11:43:53.148Z","level":"info","service":"trip-service","instanceId":"trip-service-cc6cde6be1c9-8083","correlationId":"evidence-cid-1","method":"GET","url":"/ping","message":"request completed (200) in 3ms"}

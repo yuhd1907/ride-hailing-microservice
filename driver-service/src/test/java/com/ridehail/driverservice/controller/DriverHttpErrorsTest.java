@@ -133,4 +133,66 @@ class DriverHttpErrorsTest {
         mvc.perform(get("/drivers/" + driverId)).andExpect(status().isNotFound());
     }
 
+    @Test
+    void createAndViewOwnDriverProfileSharesAccountUuid() throws Exception {
+        UUID accountId = UUID.fromString("fd699acc-6544-44a9-9634-5396060c61b8");
+        var response = new DriverResponse();
+        response.setId(accountId);
+        response.setLicensePlate("30A-12345");
+        response.setVehicleType("MOTORCYCLE");
+        when(service.createDriverProfile(eq(accountId), any(), eq("Phạm Minh Đức"), eq("0934567890")))
+            .thenReturn(response);
+        when(service.getDriverById(accountId)).thenReturn(response);
+
+        mvc.perform(post("/drivers").header("X-User-Id", accountId.toString())
+            .header("X-User-Roles", "ROLE_DRIVER")
+            .header("X-User-Full-Name", "Phạm Minh Đức")
+            .header("X-User-Phone", "0934567890")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"licensePlate\":\"30A-12345\",\"vehicleType\":\"MOTORCYCLE\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.id").value(accountId.toString()))
+            .andExpect(jsonPath("$.licensePlate").value("30A-12345"))
+            .andExpect(jsonPath("$.vehicleType").value("MOTORCYCLE"));
+
+        mvc.perform(get("/drivers/me").header("X-User-Id", accountId.toString()).header("X-User-Roles", "ROLE_DRIVER"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(accountId.toString()))
+            .andExpect(jsonPath("$.licensePlate").value("30A-12345"));
+    }
+
+    @Test
+    void passengerCannotCreateOrViewDriverProfile() throws Exception {
+        UUID passengerId = UUID.fromString("26a7f8fe-79a8-49ea-a46a-9529e5c3e381");
+        mvc.perform(post("/drivers").header("X-User-Id", passengerId.toString())
+            .header("X-User-Roles", "ROLE_PASSENGER")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"licensePlate\":\"30A-12345\",\"vehicleType\":\"MOTORCYCLE\"}"))
+            .andExpect(status().isForbidden());
+
+        mvc.perform(
+                get("/drivers/me").header("X-User-Id", passengerId.toString()).header("X-User-Roles", "ROLE_PASSENGER"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void driverCannotModifyAnotherDriversStatusOrLocation() throws Exception {
+        UUID driverA = UUID.fromString("fd699acc-6544-44a9-9634-5396060c61b8");
+        UUID driverB = UUID.fromString("5e11b65c-36ef-47cd-9019-9db767cf8d01");
+
+        mvc.perform(post("/drivers/" + driverB + "/go-online").header("X-User-Id", driverA.toString())
+            .header("X-User-Roles", "ROLE_DRIVER")).andExpect(status().isForbidden());
+
+        mvc.perform(post("/drivers/" + driverB + "/go-offline").header("X-User-Id", driverA.toString())
+            .header("X-User-Roles", "ROLE_DRIVER")).andExpect(status().isForbidden());
+
+        mvc.perform(post("/drivers/" + driverB + "/location").header("X-User-Id", driverA.toString())
+            .header("X-User-Roles", "ROLE_DRIVER")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"latitude\":21.0285,\"longitude\":105.8542}")).andExpect(status().isForbidden());
+
+        verifyNoInteractions(service);
+    }
+
 }

@@ -90,6 +90,13 @@ public class UserResponse {
         this.roles = roles;
     }
 
+    public String getRole() {
+        if (roles == null || roles.isEmpty()) {
+            return null;
+        }
+        return roles.iterator().next();
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }

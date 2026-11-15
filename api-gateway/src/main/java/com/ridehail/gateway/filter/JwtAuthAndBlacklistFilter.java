@@ -44,11 +44,14 @@ public class JwtAuthAndBlacklistFilter implements GlobalFilter, Ordered {
             headers.remove("X-User-Id");
             headers.remove("X-User-Email");
             headers.remove("X-User-Roles");
+            headers.remove("X-User-Full-Name");
+            headers.remove("X-User-Phone");
         }).build();
         var sanitized = exchange.mutate().request(request).build();
         String path = request.getURI().getPath();
         boolean publicDriverRead = HttpMethod.GET.equals(request.getMethod())
-                && (path.equals("/drivers") || path.startsWith("/drivers/"));
+                && (path.equals("/drivers") || path.startsWith("/drivers/")) && !path.equals("/drivers/me")
+                && !path.startsWith("/drivers/me/");
         if (PUBLIC_PATHS.contains(path) || publicDriverRead) {
             return chain.filter(sanitized);
         }
@@ -82,11 +85,19 @@ public class JwtAuthAndBlacklistFilter implements GlobalFilter, Ordered {
                     headers.set("X-User-Id", claims.getSubject());
                     Object email = claims.get("email");
                     Object roles = claims.get("roles");
+                    Object fullName = claims.get("fullName");
+                    Object phone = claims.get("phone");
                     if (email instanceof String value) {
                         headers.set("X-User-Email", value);
                     }
                     if (roles instanceof String value) {
                         headers.set("X-User-Roles", value);
+                    }
+                    if (fullName instanceof String value) {
+                        headers.set("X-User-Full-Name", value);
+                    }
+                    if (phone instanceof String value) {
+                        headers.set("X-User-Phone", value);
                     }
                 }).build();
                 return chain.filter(sanitized.mutate().request(authenticated).build());

@@ -42,7 +42,7 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         MDC.put("action", "REGISTER");
-        log.info("Nhận yêu cầu đăng ký tài khoản: {}", request.getEmail());
+        log.debug("Nhận yêu cầu đăng ký tài khoản: {}", request.getEmail());
 
         UserResponse response = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -54,7 +54,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<JwtResponse> login(@Valid @RequestBody LoginRequest request) {
         MDC.put("action", "LOGIN");
-        log.info("Nhận yêu cầu đăng nhập: {}", request.getEmail());
+        log.debug("Nhận yêu cầu đăng nhập: {}", request.getEmail());
 
         JwtResponse response = authService.login(request);
         return ResponseEntity.ok(response);
@@ -75,7 +75,7 @@ public class AuthController {
         String token = authHeader.substring(7).trim();
         authService.logout(token);
 
-        log.info("Đăng xuất thành công, token đã bị thu hồi");
+        log.debug("Đăng xuất thành công, token đã bị thu hồi");
         return ResponseEntity.ok(Map.of("message", "Đăng xuất thành công. Token đã bị thu hồi."));
     }
 
