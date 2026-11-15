@@ -33,6 +33,9 @@ public class Payment {
     @Column(name = "rider_id", nullable = false)
     private UUID riderId;
 
+    @Column(name = "driver_id")
+    private UUID driverId;
+
     @Column(name = "amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
@@ -40,9 +43,16 @@ public class Payment {
     @Column(name = "status", length = 20, nullable = false)
     private PaymentStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "failure_reason", length = 30)
+    private PaymentFailureReason failureReason;
+
     // Cùng một key đến hai lần không được tạo thêm payment thứ hai
     @Column(name = "idempotency_key", nullable = false, unique = true)
     private UUID idempotencyKey;
+
+    @Column(name = "correlation_id", length = 128)
+    private String correlationId;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamptz")
@@ -55,12 +65,25 @@ public class Payment {
     protected Payment() {
     }
 
-    public Payment(UUID tripId, UUID riderId, BigDecimal amount, UUID idempotencyKey) {
+    public Payment(UUID tripId, UUID riderId, UUID driverId, BigDecimal amount, UUID idempotencyKey,
+            String correlationId) {
         this.tripId = tripId;
         this.riderId = riderId;
+        this.driverId = driverId;
         this.amount = amount;
         this.idempotencyKey = idempotencyKey;
+        this.correlationId = correlationId;
         this.status = PaymentStatus.PENDING;
+    }
+
+    public void markSucceeded() {
+        this.status = PaymentStatus.SUCCESS;
+        this.failureReason = null;
+    }
+
+    public void markFailed(PaymentFailureReason reason) {
+        this.status = PaymentStatus.FAILED;
+        this.failureReason = reason;
     }
 
     public UUID getId() {
@@ -75,6 +98,10 @@ public class Payment {
         return this.riderId;
     }
 
+    public UUID getDriverId() {
+        return this.driverId;
+    }
+
     public BigDecimal getAmount() {
         return this.amount;
     }
@@ -83,12 +110,16 @@ public class Payment {
         return this.status;
     }
 
-    public void setStatus(PaymentStatus status) {
-        this.status = status;
+    public PaymentFailureReason getFailureReason() {
+        return this.failureReason;
     }
 
     public UUID getIdempotencyKey() {
         return this.idempotencyKey;
+    }
+
+    public String getCorrelationId() {
+        return this.correlationId;
     }
 
     public Instant getCreatedAt() {

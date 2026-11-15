@@ -9,7 +9,10 @@
 ```
 
 - `type` viết thường: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`.
-- `scope` xác định phần việc: `build`, `eureka`, `gateway`, `user`, `driver`, `infra`, `core`, `project`.
+- `scope` xác định phần việc: `build`, `eureka`, `gateway`, `user`, `driver`, `trip`,
+  `matching`, `payment`, `notification`, `deploy`, `test`, `infra`, `core`, `project`.
+  Một commit chạm nhiều service ghi các scope cách nhau bằng dấu phẩy, ví dụ
+  `feat(payment,notification): ...`.
 - Tiêu đề tối đa 50 ký tự, tính cả type và scope; mô tả bắt đầu bằng chữ hoa,
   dùng động từ mệnh lệnh và không kết thúc bằng dấu chấm.
 - Phần thân cách tiêu đề một dòng trống, mỗi dòng tối đa 72 ký tự; giải thích

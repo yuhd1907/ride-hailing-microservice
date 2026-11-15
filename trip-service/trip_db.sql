@@ -42,3 +42,18 @@ CREATE INDEX trips_driver_id_idx ON trips ("driverId") WHERE "driverId" IS NOT N
 CREATE INDEX trips_status_idx ON trips (status);
 CREATE INDEX trip_status_history_trip_id_created_at_idx
     ON trip_status_history ("tripId", "createdAt" DESC);
+
+-- Phase 2: runtime also applies this additive migration for existing databases.
+CREATE TABLE IF NOT EXISTS processed_events (
+    event_id UUID PRIMARY KEY,
+    event_type VARCHAR(100) NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS event_outbox (
+    event_id UUID PRIMARY KEY,
+    envelope JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    published_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS event_outbox_pending_idx
+    ON event_outbox (created_at) WHERE published_at IS NULL;

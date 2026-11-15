@@ -1,0 +1,49 @@
+'use strict';
+const crypto = require('crypto');
+const events = require('./events');
+const driver = require('./service-client');
+module.exports = async event => {
+  await events.once(event, async client => {
+    const { tripId, riderId } = event.payload;
+    // Persist reservation identity before external calls so a retry after a crash
+    // repeats the same idempotent reserve, even if the driver disappeared from GEO.
+    const { rows: [row] } = await client.query('SELECT * FROM matching_requests WHERE "tripId"=$1 FOR UPDATE', [tripId]);
+    if (!row) throw new Error('Matching request not prepared');
+    if (row.status === 'ASSIGNED') return;
+    const driverId = row.selectedDriverId;
+    if (!driverId) throw new Error('No selected driver; retry preparation');
+    try {
+      await driver.request('DRIVER-SERVICE', `/internal/drivers/${driverId}/reserve`, event.correlationId, { tripId, reservationId: row.reservationId });
+    } catch (error) {
+      if ([404, 409].includes(error.status)) {
+        error.reservationConflict = true;
+        error.driverId = driverId;
+      }
+      throw error;
+    }
+    await client.query('UPDATE matching_requests SET status=$2, "selectedDriverId"=$3, "attemptCount"="attemptCount"+1, "attemptedDriverIds"=array_append("attemptedDriverIds",$3::uuid) WHERE "tripId"=$1', [tripId, 'ASSIGNED', driverId]);
+    await events.enqueue(client, 'matching.driver_assigned', { tripId, riderId, driverId, assignedAt: new Date().toISOString() }, event.correlationId);
+  });
+};
+module.exports.prepare = async event => {
+  await events.transaction(async client => {
+    await client.query('INSERT INTO matching_requests ("tripId", status, "reservationId") VALUES ($1,$2,$3) ON CONFLICT ("tripId") DO NOTHING', [event.payload.tripId, 'PENDING', crypto.randomUUID()]);
+    const { rows: [row] } = await client.query('SELECT * FROM matching_requests WHERE "tripId"=$1 FOR UPDATE', [event.payload.tripId]);
+    if (row.status === 'ASSIGNED' || row.selectedDriverId) return;
+    const { pickup } = event.payload;
+    const candidates = await driver.request('DRIVER-SERVICE', `/internal/drivers/available?lat=${pickup.lat}&lng=${pickup.lng}&radius=5`, event.correlationId, null, 'GET');
+    const candidate = candidates.find(item => !row.attemptedDriverIds.includes(item.id));
+    if (!candidate) throw new Error('No available driver');
+    await client.query('UPDATE matching_requests SET "selectedDriverId"=$2 WHERE "tripId"=$1', [event.payload.tripId, candidate.id]);
+  });
+};
+module.exports.handle = async event => {
+  await module.exports.prepare(event);
+  try { await module.exports(event); }
+  catch (error) {
+    if (error.reservationConflict) await events.transaction(async client => {
+      await client.query('UPDATE matching_requests SET "attemptedDriverIds"=array_append("attemptedDriverIds", "selectedDriverId"), "selectedDriverId"=NULL WHERE "tripId"=$1 AND status <> $2 AND "selectedDriverId"=$3', [event.payload.tripId, 'ASSIGNED', error.driverId]);
+    });
+    throw error;
+  }
+};

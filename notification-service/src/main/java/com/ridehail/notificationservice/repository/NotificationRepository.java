@@ -1,10 +1,16 @@
 package com.ridehail.notificationservice.repository;
 
+import java.util.List;
 import java.util.UUID;
 
 import com.ridehail.notificationservice.entity.Notification;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface NotificationRepository extends JpaRepository<Notification, UUID> {
+
+    List<Notification> findByRecipientIdOrderByCreatedAtDesc(UUID recipientId, Pageable pageable);
+
+    List<Notification> findByTripIdOrderByCreatedAtAsc(UUID tripId);
 
 }
