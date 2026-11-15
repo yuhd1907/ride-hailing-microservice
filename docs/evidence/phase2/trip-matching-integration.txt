@@ -1,0 +1,17 @@
+﻿Integration run 2026-11-15T01:44:45.264Z; real PostgreSQL/RabbitMQ/Eureka/Driver/Payment/Notification; faults=true
+PASS 1: Driver load balancing: driver-service-instance-2, driver-service-instance-1
+PASS 2: Gateway blocks /internal
+PASS 3: Gateway -> Matching -> reserve -> start -> complete; tripId=5db3286a-4df0-4759-807d-e9592727585f; correlationId=890cb290-40e4-42c9-9530-27df4b28cd5e
+PASS 4: Payment Service payment.succeeded -> CONFIRMED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 5: Notification Service sent PAYMENT_SUCCEEDED for tripId=5db3286a-4df0-4759-807d-e9592727585f
+PASS 6: Gateway -> Matching -> reserve -> start -> complete; tripId=1cbf8de8-8b06-498a-984c-e832448f8eb7; correlationId=a8092728-a04f-4d54-855c-9587819dacc9
+PASS 7: Payment Service payment.failed -> CANCELLED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 8: Notification Service sent PAYMENT_FAILED + TRIP_COMPENSATED for tripId=1cbf8de8-8b06-498a-984c-e832448f8eb7
+PASS 9: Malformed event is dead-lettered
+PASS 10: Gateway -> Matching -> reserve -> start -> complete; tripId=1e4b877c-68e2-485a-8b2b-c586f471708a; correlationId=e0728726-eaa3-41e5-b769-9ebf2f2fe910
+PASS 11: Payment Service payment.failed -> CANCELLED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 12: Payment event survives Trip downtime and is consumed after restart
+PASS 13: Gateway -> Matching -> reserve -> start -> complete; tripId=e374695d-df8d-4ce6-9732-9021cfc113e8; correlationId=16c54450-f10c-4f1d-9f8f-a385e8ca3687
+PASS 14: Payment Service payment.failed -> CANCELLED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 15: Driver outage rolls back DB/dedup, exhausts retry into DLQ, same event succeeds after recovery
+RESULT: 15 integration checks passed with the real Payment/Notification Saga.
