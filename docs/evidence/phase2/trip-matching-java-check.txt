@@ -1,0 +1,46 @@
+Java check - 2026-11-10 (Asia/Bangkok)
+Environment: gradle:8.7-jdk17-alpine container, 2GB memory, max-workers=2
+Command: gradle test checkFormat --no-daemon --max-workers=2
+
+api-gateway tests=23 failures_or_errors=0 skipped=0
+driver-service tests=34 failures_or_errors=0 skipped=0
+eureka-server tests=0 failures_or_errors=0 skipped=0
+notification-service tests=4 failures_or_errors=0 skipped=0
+payment-service tests=4 failures_or_errors=0 skipped=0
+user-service tests=25 failures_or_errors=0 skipped=0
+
+FINAL BUILD OUTPUT
+> Task :user-service:processTestResources NO-SOURCE
+> Task :user-service:testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has
+been appended
+> Task :user-service:test
+> Task :test
+> Task :api-gateway:checkFormatMain
+> Task :api-gateway:checkFormatTest
+> Task :api-gateway:checkFormat
+> Task :driver-service:checkFormatMain
+> Task :driver-service:checkFormatTest
+> Task :driver-service:checkFormat
+> Task :eureka-server:checkFormatMain
+> Task :eureka-server:checkFormatTest NO-SOURCE
+> Task :eureka-server:checkFormat
+> Task :notification-service:checkFormatMain
+> Task :notification-service:checkFormatTest
+> Task :notification-service:checkFormat
+> Task :payment-service:checkFormatMain
+> Task :payment-service:checkFormatTest
+> Task :payment-service:checkFormat
+> Task :user-service:checkFormatMain
+> Task :user-service:checkFormatTest
+> Task :user-service:checkFormat
+> Task :checkFormat
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 5m 12s
+33 actionable tasks: 33 executed

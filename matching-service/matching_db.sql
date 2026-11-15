@@ -11,3 +11,18 @@ CREATE TABLE matching_requests (
 );
 
 CREATE INDEX matching_requests_status_idx ON matching_requests (status);
+
+-- Phase 2: runtime also applies this additive migration for existing databases.
+CREATE TABLE IF NOT EXISTS processed_events (
+    event_id UUID PRIMARY KEY,
+    event_type VARCHAR(100) NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS event_outbox (
+    event_id UUID PRIMARY KEY,
+    envelope JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    published_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS event_outbox_pending_idx
+    ON event_outbox (created_at) WHERE published_at IS NULL;
