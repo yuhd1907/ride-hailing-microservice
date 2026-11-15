@@ -184,6 +184,32 @@ Client gọi API qua Gateway tại `http://localhost:8080`.
 
 Dữ liệu mẫu nằm trong [scripts/seed-data.sql](scripts/seed-data.sql), được nạp khi khởi tạo volume PostgreSQL mới. Có các tài khoản `passenger1@ridehail.com`, `passenger2@ridehail.com` và `driver1@ridehail.com`, cùng mật khẩu `Password@123`.
 
+## Saga thanh toán và thông báo
+
+Khi chuyến đi hoàn thành, Trip Service publish `trip.completed`. Payment Service thu tiền mô
+phỏng (vượt 2.000.000 VND thì thất bại), lưu payment cùng event kết quả vào bảng outbox rồi
+publish `payment.succeeded` hoặc `payment.failed`. Thanh toán thất bại thì Trip Service chạy bước
+bù trừ và publish `trip.compensated`. Notification Service nhận các event này và gửi thông báo
+cho khách và tài xế. Chi tiết luồng và cách xử lý lỗi ở [docs/saga.md](docs/saga.md).
+
+| Cơ chế | Cách làm |
+| --- | --- |
+| Chống trùng | Bảng `processed_events` theo `eventId`; `UNIQUE(idempotency_key = tripId)` cho payment |
+| Retry | Consumer thử lại 3 lần (backoff 1s, 2s) |
+| Dead-letter queue | `<queue>.dlq` qua exchange `rideflow.dlx`; xem/replay bằng `/internal/payments/dlq`, `/internal/notifications/dlq` |
+| Publish tin cậy | Outbox `outbox_events` + publisher confirm |
+
+API cho người dùng (qua Gateway, cần Bearer token): `GET /payments/me`, `GET /payments/{id}`,
+`GET /payments/trips/{tripId}`, `GET /notifications/me`.
+
+Giả lập event và chạy bộ kiểm thử giai đoạn 2 (ghi kết quả vào `docs/evidence/phase2/`):
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\publish-event.ps1 -EventType trip.completed -Payload @{ tripId = [guid]::NewGuid().ToString(); riderId = '26a7f8fe-79a8-49ea-a46a-9529e5c3e381'; driverId = 'fd699acc-6544-44a9-9634-5396060c61b8'; fareAmount = 125000 }
+.\tests\phase2-payment-notification.ps1
+```
+
 ## Build và kiểm thử
 
 Build toàn bộ sáu module Java, bao gồm kiểm thử và kiểm tra định dạng:
