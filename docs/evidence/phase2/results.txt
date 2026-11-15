@@ -1,0 +1,20 @@
+﻿
+Test Status Scenario                                                     Detail                                                                                                             
+---- ------ --------                                                     ------                                                                                                             
+T1   PASS   Thanh toán thành công và gửi thông báo                       paymentId=3cb3a141-4e52-4df2-ae7e-7a655eea7c1e, status=SUCCESS                                                     
+T2   PASS   Thanh toán thất bại phát payment.failed                      status=FAILED, reason=INSUFFICIENT_FUNDS                                                                           
+T3   PASS   Message trùng eventId chỉ xử lý một lần                      payments=1, notifications=1                                                                                        
+T4   PASS   Cùng chuyến, eventId khác không tạo payment mới              payments of trip T1=1                                                                                              
+T5   PASS   10 event đồng thời cho một chuyến chỉ thu tiền một lần       payments=1, notifications=1                                                                                        
+T6   PASS   Lỗi tạm thời được retry rồi thành công                       status=SUCCESS, thoi gian=3.1s, dlq=0                                                                              
+T7   PASS   Hết retry vào DLQ, replay sau khi hết lỗi thì xử lý được     vao DLQ=True, chua thu tien=True, replayed=1, sau replay=True                                                      
+T8   PASS   Message thiếu fareAmount vào DLQ ngay, không retry           vao DLQ sau 0.5s                                                                                                   
+T9   PASS   Notification retry khi kênh gửi lỗi tạm thời                 notifications=1                                                                                                    
+T10  PASS   Payment dừng: event chờ trong queue, chạy lại thì xử lý tiếp message cho trong queue=True, xu ly sau khi start 8.5s                                                             
+T11  PASS   Notification dừng không chặn thanh toán, chạy lại thì gửi bù da thanh toan=True, payment.succeeded cho trong queue=True, gui sau khi start 8s                                   
+T12  PASS   driver_assigned và trip.compensated báo cho khách và tài xế  4 thong bao: DRIVER_ASSIGNED/PASSENGER, DRIVER_ASSIGNED/DRIVER, TRIP_COMPENSATED/PASSENGER, TRIP_COMPENSATED/DRIVER
+T13  PASS   Phân quyền khi xem payment/thông báo                         khong token=401, chu so huu=200, nguoi khac=403, id sai=400, /notifications/me=200                                 
+
+
+
+Tong ket: 13/13 PASS
