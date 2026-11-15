@@ -1,6 +1,6 @@
 'use strict';
 // Runs against the local Compose stack. Creates isolated test users/trips.
-// Payment results are simulated until TV3's Saga implementation is merged.
+// Payment results come from the real Payment Service (TV3 Saga).
 require('../trip-service/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../.env') });
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -45,7 +45,7 @@ async function broker() {
     context.channel = await context.connection.createConfirmChannel();
     context.channel.on('error', () => {});
     const q = await context.channel.assertQueue('', { exclusive: true });
-    for (const type of ['trip.completed', 'trip.compensated', 'matching.driver_assigned']) await context.channel.bindQueue(q.queue, 'rideflow.events', type);
+    for (const type of ['trip.completed', 'trip.compensated', 'matching.driver_assigned', 'payment.succeeded', 'payment.failed']) await context.channel.bindQueue(q.queue, 'rideflow.events', type);
     await context.channel.consume(q.queue, msg => { if (msg) observed.push({ event: JSON.parse(msg.content.toString()), properties: msg.properties }); }, { noAck: true });
 }
 async function publish(event) {
@@ -79,21 +79,33 @@ async function pendingTrip(rider, driver, fare) {
     await request(`${gateway}/trips/${trip.tripId}/start`, { method: 'POST', token: driver.token });
     await request(`${gateway}/trips/${trip.tripId}/complete`, { method: 'POST', token: driver.token, body: { fareAmount: fare } });
     await tripStatus(trip.tripId, 'PAYMENT_PENDING');
-    const completed = await waitFor('trip.completed envelope', () => observed.find(item => item.event.eventType === 'trip.completed' && item.event.payload.tripId === trip.tripId));
+    const completed = await waitFor('trip.completed envelope', () => observed.find(item => item.event.eventType === 'trip.completed' && item.event.payload?.tripId === trip.tripId));
     assert.equal(completed.event.correlationId, correlationId);
     assert.equal(completed.event.payload.riderId, rider.userId);
     assert.equal(completed.event.payload.fareAmount, fare);
     assert.equal(completed.properties.messageId, completed.event.eventId);
     assert.equal(completed.properties.deliveryMode, 2);
     assert.equal(completed.properties.headers['x-correlation-id'], correlationId);
-    const assignment = await waitFor('assignment event', () => observed.find(item => item.event.eventType === 'matching.driver_assigned' && item.event.payload.tripId === trip.tripId));
+    const assignment = await waitFor('assignment event', () => observed.find(item => item.event.eventType === 'matching.driver_assigned' && item.event.payload?.tripId === trip.tripId));
     assert.equal(assignment.event.correlationId, correlationId);
     pass(`Gateway -> Matching -> reserve -> start -> complete; tripId=${trip.tripId}; correlationId=${correlationId}`);
     return { ...trip, correlationId, fare };
 }
-function payment(trip, rider, driver, failed) {
-    const time = new Date().toISOString();
-    return { eventId: uuid(), eventType: failed ? 'payment.failed' : 'payment.succeeded', correlationId: trip.correlationId, occurredAt: time, payload: { paymentId: uuid(), tripId: trip.tripId, riderId: rider.userId, driverId: driver.userId, amount: trip.fare, ...(failed ? { reason: 'INSUFFICIENT_FUNDS', failedAt: time } : { paidAt: time }) } };
+async function paymentResult(trip, failed, timeout = 45000) {
+    const type = failed ? 'payment.failed' : 'payment.succeeded';
+    const item = await waitFor(`${type} from Payment Service`, () => observed.find(entry => entry.event.eventType === type && entry.event.payload?.tripId === trip.tripId), timeout);
+    assert.equal(item.event.correlationId, trip.correlationId);
+    assert.equal(Number(item.event.payload.amount), trip.fare);
+    assert.equal(item.properties.messageId, item.event.eventId);
+    if (failed) assert.equal(item.event.payload.reason, 'INSUFFICIENT_FUNDS');
+    return item.event;
+}
+async function notifications(tripId, types) {
+    return waitFor(`notifications ${types.join(', ')}`, async () => {
+        const response = await fetch(`http://127.0.0.1:8086/internal/notifications?tripId=${tripId}`, { signal: AbortSignal.timeout(5000) });
+        const items = await response.json();
+        return types.every(type => items.some(item => item.type === type)) && items;
+    });
 }
 async function result(event, driver, status) {
     const trip = await tripStatus(event.payload.tripId, status);
@@ -101,7 +113,7 @@ async function result(event, driver, status) {
     const { data } = await request(`http://127.0.0.1:8082/drivers/${driver.userId}`);
     assert.equal(data.status, 'AVAILABLE');
     if (status === 'CANCELLED') {
-        const compensated = await waitFor('trip.compensated', () => observed.find(item => item.event.eventType === 'trip.compensated' && item.event.payload.tripId === trip.tripId));
+        const compensated = await waitFor('trip.compensated', () => observed.find(item => item.event.eventType === 'trip.compensated' && item.event.payload?.tripId === trip.tripId));
         assert.equal(compensated.event.correlationId, event.correlationId);
         assert.equal(compensated.event.payload.reason, event.payload.reason);
     }
@@ -116,10 +128,10 @@ async function result(event, driver, status) {
         const { rows: [compensation] } = await tripDb.query("SELECT count(*)::int AS total FROM event_outbox WHERE envelope->>'eventType'='trip.compensated' AND envelope->'payload'->>'tripId'=$1", [trip.tripId]);
         assert.equal(compensation.total, 1);
     }
-    pass(`Simulated ${event.eventType} -> ${status}, driver AVAILABLE; duplicate eventId and business result are idempotent`);
+    pass(`Payment Service ${event.eventType} -> ${status}, driver AVAILABLE; duplicate eventId and business result are idempotent`);
 }
 async function main() {
-    console.log(`Integration run ${new Date().toISOString()}; real PostgreSQL/RabbitMQ/Eureka/Driver; simulated Payment results; faults=${faults}`);
+    console.log(`Integration run ${new Date().toISOString()}; real PostgreSQL/RabbitMQ/Eureka/Driver/Payment/Notification; faults=${faults}`);
     await broker();
     const rider = await user('ROLE_PASSENGER'), driver = await user('ROLE_DRIVER');
     await request(`${gateway}/drivers`, { method: 'POST', token: driver.token, body: { licensePlate: `TEST-${uuid().slice(0, 8)}`, vehicleType: 'MOTORCYCLE' } });
@@ -134,9 +146,11 @@ async function main() {
     pass('Gateway blocks /internal');
     for (const [fare, failed] of [[125000, false], [5000000, true]]) {
         const trip = await pendingTrip(rider, driver, fare);
-        const event = payment(trip, rider, driver, failed);
-        await publish(event);
+        const event = await paymentResult(trip, failed);
         await result(event, driver, failed ? 'CANCELLED' : 'CONFIRMED');
+        const expected = failed ? ['PAYMENT_FAILED', 'TRIP_COMPENSATED'] : ['PAYMENT_SUCCEEDED'];
+        await notifications(trip.tripId, expected);
+        pass(`Notification Service sent ${expected.join(' + ')} for tripId=${trip.tripId}`);
     }
     const dlq = 'trip-service.payment.failed.dlq';
     const before = await context.channel.checkQueue(dlq);
@@ -144,21 +158,25 @@ async function main() {
     await waitFor('malformed message in DLQ', async () => (await context.channel.checkQueue(dlq)).messageCount > before.messageCount);
     pass('Malformed event is dead-lettered');
     if (faults) {
+        // Payment is paused while the trip completes, then Trip goes down before Payment answers.
+        compose('stop', 'payment_service'); context.paused.add('payment_service');
         const trip = await pendingTrip(rider, driver, 5000000);
-        const event = payment(trip, rider, driver, true);
         compose('stop', 'trip_service'); context.paused.add('trip_service');
-        await publish(event);
-        const queued = await context.channel.checkQueue('trip-service.payment.failed');
-        assert.ok(queued.messageCount > 0);
+        compose('start', 'payment_service'); context.paused.delete('payment_service');
+        const event = await paymentResult(trip, true, 150000);
+        await waitFor('payment.failed queued for Trip', async () => (await context.channel.checkQueue('trip-service.payment.failed')).messageCount > 0);
         compose('start', 'trip_service'); context.paused.delete('trip_service');
         await result(event, driver, 'CANCELLED');
         pass('Payment event survives Trip downtime and is consumed after restart');
+        // Trip vừa khởi động lại: chờ Gateway thấy instance mới trên Eureka trước khi đặt chuyến tiếp
+        await waitFor('Gateway routes to restarted trip-service', async () => (await fetch(`${gateway}/trips/ping`, { headers: { Authorization: `Bearer ${rider.token}` }, signal: AbortSignal.timeout(5000) })).ok, 120000);
+        compose('stop', 'payment_service'); context.paused.add('payment_service');
         const retryTrip = await pendingTrip(rider, driver, 5000000);
-        const retryEvent = payment(retryTrip, rider, driver, true);
         const dlqBefore = (await context.channel.checkQueue(dlq)).messageCount;
         compose('stop', 'driver_service_1', 'driver_service_2');
         context.paused.add('driver_service_1'); context.paused.add('driver_service_2');
-        await publish(retryEvent);
+        compose('start', 'payment_service'); context.paused.delete('payment_service');
+        const retryEvent = await paymentResult(retryTrip, true, 150000);
         await waitFor('driver failure retried then DLQ', async () => (await context.channel.checkQueue(dlq)).messageCount > dlqBefore);
         const { rows: [unchanged] } = await tripDb.query('SELECT status FROM trips WHERE "tripId"=$1', [retryTrip.tripId]);
         assert.equal(unchanged.status, 'PAYMENT_PENDING');
@@ -181,7 +199,7 @@ async function main() {
         pass('Driver outage rolls back DB/dedup, exhausts retry into DLQ, same event succeeds after recovery');
     }
     await request(`${gateway}/drivers/me/go-offline`, { method: 'POST', token: driver.token });
-    console.log(`RESULT: ${passed} integration checks passed. Payment/Notification automatic Saga remains unavailable in this branch.`);
+    console.log(`RESULT: ${passed} integration checks passed with the real Payment/Notification Saga.`);
 }
 main().catch(error => { console.error(error.stack); process.exitCode = 1; }).finally(async () => {
     if (context.paused.size) { try { compose('start', ...context.paused); } catch (error) { console.error(error.message); } }
