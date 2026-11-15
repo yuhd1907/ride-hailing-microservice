@@ -1,5 +1,10 @@
 server:
   port: ${SERVER_PORT:8086}
+  # Luôn trả Content-Type kèm charset=UTF-8 để client (PowerShell 5, trình duyệt cũ) đọc đúng tiếng Việt
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
 
 spring:
   application:
@@ -26,6 +31,22 @@ spring:
     username: ${SPRING_RABBITMQ_USERNAME:guest}
     password: ${SPRING_RABBITMQ_PASSWORD:guest}
     connection-timeout: 5s
+    # Dead-letter replay waits for the broker to confirm each copied message
+    publisher-confirm-type: simple
+    listener:
+      simple:
+        acknowledge-mode: auto
+        concurrency: ${NOTIFICATION_LISTENER_CONCURRENCY:2}
+        max-concurrency: ${NOTIFICATION_LISTENER_CONCURRENCY:2}
+        prefetch: 10
+        # A message that still fails after the retries is rejected into the dead-letter queue
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: ${NOTIFICATION_RETRY_MAX_ATTEMPTS:3}
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 10s
 
 # Eureka Client
 eureka:
