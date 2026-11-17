@@ -11,9 +11,14 @@ const events = require('./events');
 const matching = require('./matching');
 const errorDetails = error => error?.message || error?.code || error?.stack || String(error);
 rabbitmq.consume('trip.requested', matching.handle);
+rabbitmq.consume('trip.driver_rejected', matching.rejected);
 let outboxTimer;
 const port = Number(process.env.MATCHING_SERVICE_PORT || process.env.PORT || 8084);
 const log = (level, correlationId, method, url, message) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), level, service: identity.service, instanceId: identity.instanceId, correlationId, tripId: null, eventId: null, method, url, message }));
+// Prometheus scrape /metrics mỗi 15s: đặt trước middleware ghi log để không làm nhiễu log.
+const metrics = require('./metrics');
+app.get('/metrics', metrics.endpoint);
+app.use(metrics.middleware);
 app.use((req, res, next) => { req.correlationId = req.get('x-correlation-id') || crypto.randomUUID(); res.setHeader('X-Correlation-Id', req.correlationId); const started = Date.now(); res.on('finish', () => log(res.statusCode >= 500 ? 'error' : 'info', req.correlationId, req.method, req.originalUrl, `request completed (${res.statusCode}) in ${Date.now() - started}ms`)); next(); });
 app.get('/ping', async (req, res) => { try { await db.query('SELECT 1'); if (!rabbitmq.channel) throw new Error('RabbitMQ is disconnected'); await rabbitmq.channel.checkExchange(rabbitmq.EXCHANGE); res.status(200).json({ status: 'UP', service: 'matching-service' }); } catch (e) { log('error', req.correlationId, req.method, req.originalUrl, `health check failed: ${e.message}`); res.status(503).json({ status: 'DOWN', service: 'matching-service' }); } });
 const server = app.listen(port, () => log('info', null, null, null, `matching-service listening on ${port}`));

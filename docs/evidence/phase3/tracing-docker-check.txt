@@ -1,0 +1,14 @@
+Tracing run 2026-11-17T01:55:49.517Z; gateway=http://127.0.0.1:8080; zipkin=http://127.0.0.1:9411
+PASS 1: GET /drivers/ping: 1 trace (traceId=6afbb42508b7108d2841fc0779705e2f) gồm 3 span của api-gateway -> driver-service, đúng quan hệ cha-con
+      api-gateway | SERVER | http get | 276.7ms
+        api-gateway | CLIENT | http get | 154.4ms
+          driver-service | SERVER | http get /ping | 54.0ms
+PASS 2: POST /auth/login: 1 trace gồm 3 span của api-gateway -> user-service
+PASS 3: Request /actuator không tạo span (tên span của api-gateway: http get, http get /fallback/{service}, http post, http post /fallback/{service})
+PASS 4: Chuyến 15bb7627-466d-47cc-9888-c5ecb7ed1a48: tìm correlationId=f32c49ec-60a5-459a-b2df-9132b50fcd15 ra 8 trace, 10 span của api-gateway, driver-service, notification-service, payment-service
+PASS 5: Luồng bất đồng bộ qua RabbitMQ cũng có span: payment-service PRODUCER "rideflow.events/payment.succeeded send"; notification-service CONSUMER "notification-service.payment.succeeded receive"; payment-service CONSUMER "payment-service.trip.completed receive"; notification-service CONSUMER "notification-service.matching.driver_assigned receive"
+      payment-service | PRODUCER | rideflow.events/payment.succeeded send | 96.6ms
+        notification-service | CONSUMER | notification-service.payment.succeeded receive | 2854.8ms
+      payment-service | CONSUMER | payment-service.trip.completed receive | 11593.4ms
+Zipkin đang có trace của: api-gateway, driver-service, notification-service, payment-service, user-service
+RESULT: 5 tracing checks passed on the real stack. Xem giao diện tại http://127.0.0.1:9411

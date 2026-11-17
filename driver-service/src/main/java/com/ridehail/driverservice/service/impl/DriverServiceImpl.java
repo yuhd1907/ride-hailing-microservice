@@ -312,6 +312,38 @@ public class DriverServiceImpl implements DriverService {
     }
 
     /**
+     * Tài xế từ chối chuyến (RESERVED → AVAILABLE ngay, không chờ hết hạn giữ chỗ). Lũy
+     * đẳng: nếu tài xế không còn giữ chuyến này thì coi như đã từ chối xong
+     */
+    @Override
+    @Transactional
+    public DriverResponse rejectTrip(UUID driverId, UUID tripId) {
+        MDC.put("driverId", driverId.toString());
+        MDC.put("action", "REJECT_TRIP");
+        MDC.put("tripId", tripId.toString());
+
+        int updatedRows = driverRepository.rejectReservation(driverId, tripId);
+        if (updatedRows == 0) {
+            requireDriverExists(driverId);
+            Driver existing = driverRepository.findById(driverId)
+                .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
+            if (existing.getStatus() == DriverStatus.ON_TRIP && tripId.equals(existing.getCurrentTripId())) {
+                throw new InvalidStateTransitionException(
+                        "Tài xế " + driverId + " đã bắt đầu chuyến " + tripId + " nên không thể từ chối");
+            }
+            log.debug("[{}] Idempotent reject: driverId={} không còn giữ tripId={}", instanceId, driverId, tripId);
+            return driverMapper.toResponse(existing);
+        }
+
+        Driver driver = driverRepository.findById(driverId)
+            .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
+
+        restoreLocation(driverId);
+        log.debug("[{}] driverId={} từ chối tripId={}, trở lại AVAILABLE", instanceId, driverId, tripId);
+        return driverMapper.toResponse(driver);
+    }
+
+    /**
      * Bắt đầu chuyến (RESERVED → ON_TRIP) - Lũy đẳng khi gọi lặp lại
      */
     @Override

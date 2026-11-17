@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.ridehail.driverservice.config.RequestContextFilter;
 import com.ridehail.driverservice.config.exception.GlobalExceptionHandler;
 import com.ridehail.driverservice.config.exception.DriverNotFoundException;
+import com.ridehail.driverservice.config.exception.InvalidStateTransitionException;
 import com.ridehail.driverservice.dto.request.ReserveDriverRequest;
 import com.ridehail.driverservice.dto.response.DriverResponse;
 import com.ridehail.driverservice.service.DriverService;
@@ -124,6 +125,36 @@ class DriverHttpErrorsTest {
             .andExpect(jsonPath("$.currentTripId").value(tripId.toString()))
             .andExpect(jsonPath("$.reservationId").value(reservationId.toString()));
         verify(service).reserveDriver(eq(driverId), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "{\"tripId\":\"not-a-uuid\"}", "{}" })
+    void rejectRequiresAValidTripId(String body) throws Exception {
+        mvc.perform(post("/internal/drivers/ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f/reject")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body)).andExpect(status().isBadRequest());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rejectReleasesOnlyTheNamedTripAndReportsAStartedTripAs400() throws Exception {
+        UUID driverId = UUID.fromString("ab11f6b5-4dc9-47cc-bd2a-056f4c9eb53f");
+        UUID tripId = UUID.fromString("93d8f465-65ac-491d-a4d0-b29cc65775cd");
+        var response = new DriverResponse();
+        response.setId(driverId);
+        response.setStatus("AVAILABLE");
+        when(service.rejectTrip(driverId, tripId)).thenReturn(response);
+
+        mvc.perform(post("/internal/drivers/" + driverId + "/reject").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"tripId\":\"" + tripId + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(driverId.toString()))
+            .andExpect(jsonPath("$.status").value("AVAILABLE"));
+        verify(service).rejectTrip(driverId, tripId);
+
+        when(service.rejectTrip(driverId, tripId)).thenThrow(new InvalidStateTransitionException("Đã bắt đầu chuyến"));
+        mvc.perform(post("/internal/drivers/" + driverId + "/reject").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"tripId\":\"" + tripId + "\"}")).andExpect(status().isBadRequest());
     }
 
     @Test

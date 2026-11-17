@@ -26,6 +26,32 @@ module.exports = app => {
     if (!trip) fail(404, 'Trip not found');
     res.json(trip);
   });
+  // Tài xế từ chối chuyến: nhả tài xế ngay ở Driver Service, đưa chuyến về MATCHING
+  // và phát trip.driver_rejected để Matching tìm tài xế khác.
+  app.post('/trips/:id/reject', async (req, res) => {
+    if (!uuid(req.params.id)) fail(400, 'Invalid tripId');
+    const requesterId = req.get('x-user-id');
+    if (!uuid(requesterId)) fail(401, 'Missing driver identity');
+    const result = await events.transaction(async client => {
+      const { rows: [trip] } = await client.query('SELECT * FROM trips WHERE "tripId"=$1 FOR UPDATE', [req.params.id]);
+      if (!trip) fail(404, 'Trip not found');
+      const correlationId = trip.sagaId || req.correlationId;
+      req.correlationId = correlationId;
+      res.setHeader('X-Correlation-ID', correlationId);
+      if (trip.status !== 'AWAITING_DRIVER') fail(409, 'Trip is not awaiting driver');
+      if (trip.driverId !== requesterId.toLowerCase()) fail(403, 'Only the assigned driver can reject this trip');
+      try { await driver.request('DRIVER-SERVICE', `/internal/drivers/${trip.driverId}/reject`, correlationId, { tripId: trip.tripId }); }
+      catch (error) {
+        // 404: tài xế không còn tồn tại nên không có gì để nhả; 400/409: tài xế đã bắt đầu chuyến.
+        if ([400, 409].includes(error.status)) fail(409, 'Driver can no longer reject this trip');
+        if (error.status !== 404) throw error;
+      }
+      await history(client, trip, 'MATCHING', 'driver rejected', trip.paymentId, null);
+      await events.enqueue(client, 'trip.driver_rejected', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, rejectedAt: new Date().toISOString() }, correlationId);
+      return { ...trip, driverId: null, status: 'MATCHING' };
+    });
+    res.json(result);
+  });
   for (const action of ['start', 'complete']) app.post(`/trips/:id/${action}`, async (req, res) => {
     if (!uuid(req.params.id)) fail(400, 'Invalid tripId');
     const result = await events.transaction(async client => {
