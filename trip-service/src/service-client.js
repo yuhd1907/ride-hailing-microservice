@@ -14,8 +14,8 @@ async function request(app, path, correlationId, body, method = 'POST') {
   const text = await response.text();
   return text ? JSON.parse(text) : null;
 }
-async function release(driverId, correlationId) {
-  try { await request('DRIVER-SERVICE', `/internal/drivers/${driverId}/release`, correlationId); }
+async function release(driverId, correlationId, tripId) {
+  try { await request('DRIVER-SERVICE', `/internal/drivers/${driverId}/release`, correlationId, tripId ? { tripId } : undefined); }
   catch (error) { if (![400, 404, 409, 422].includes(error.status)) throw error; }
 }
 module.exports = { request, release };

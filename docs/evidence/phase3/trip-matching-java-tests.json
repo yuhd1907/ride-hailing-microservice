@@ -1,0 +1,264 @@
+{
+  "collectedAt": "2026-11-17T16:14:11.929Z",
+  "source": "Actual Gradle build/test-results/test/TEST-*.xml; timestamps may include unchanged up-to-date tasks",
+  "nodeExitCode": 0,
+  "java": [
+    {
+      "service": "api-gateway",
+      "tests": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "name": "com.ridehail.gateway.filter.GatewayWebFilterTest",
+          "timestamp": "2026-11-17T16:11:22",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.gateway.filter.JwtAuthAndBlacklistFilterTest",
+          "timestamp": "2026-11-17T16:11:22",
+          "tests": 16,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    {
+      "service": "driver-service",
+      "tests": 38,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "name": "com.ridehail.driverservice.config.RequestContextFilterTest",
+          "timestamp": "2026-11-17T16:11:30",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.driverservice.config.ServiceWiringTest",
+          "timestamp": "2026-11-17T16:11:32",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.driverservice.controller.DriverHttpErrorsTest",
+          "timestamp": "2026-11-17T16:11:35",
+          "tests": 15,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.driverservice.logging.JsonLogEncoderTest",
+          "timestamp": "2026-11-17T16:11:38",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.driverservice.service.DriverServiceTest",
+          "timestamp": "2026-11-17T16:11:38",
+          "tests": 19,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    {
+      "service": "eureka-server",
+      "note": "No Java test source in this module"
+    },
+    {
+      "service": "notification-service",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "name": "com.ridehail.notificationservice.config.RequestContextFilterTest",
+          "timestamp": "2026-11-17T16:11:40",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.notificationservice.controller.PingControllerTest",
+          "timestamp": "2026-11-17T16:11:43",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.notificationservice.logging.JsonLogEncoderTest",
+          "timestamp": "2026-11-17T16:11:44",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.notificationservice.service.impl.NotificationServiceImplTest",
+          "timestamp": "2026-11-17T16:11:44",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.notificationservice.service.NotificationMessageFactoryTest",
+          "timestamp": "2026-11-17T16:11:44",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.notificationservice.simulation.FaultInjectorTest",
+          "timestamp": "2026-11-17T16:11:45",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    {
+      "service": "payment-service",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "name": "com.ridehail.paymentservice.config.RequestContextFilterTest",
+          "timestamp": "2026-11-17T16:11:47",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.paymentservice.controller.PingControllerTest",
+          "timestamp": "2026-11-17T16:11:50",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.paymentservice.logging.JsonLogEncoderTest",
+          "timestamp": "2026-11-17T16:11:51",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.paymentservice.messaging.EventReaderTest",
+          "timestamp": "2026-11-17T16:11:51",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.paymentservice.service.impl.PaymentServiceImplTest",
+          "timestamp": "2026-11-17T16:11:51",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.paymentservice.simulation.FaultInjectorTest",
+          "timestamp": "2026-11-17T16:11:52",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ]
+    },
+    {
+      "service": "user-service",
+      "tests": 25,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "name": "com.ridehail.userservice.config.RequestContextFilterTest",
+          "timestamp": "2026-11-17T16:11:54",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.userservice.config.ServiceWiringTest",
+          "timestamp": "2026-11-17T16:11:55",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.userservice.controller.UserHttpErrorsTest",
+          "timestamp": "2026-11-17T16:11:57",
+          "tests": 14,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.userservice.logging.JsonLogEncoderTest",
+          "timestamp": "2026-11-17T16:11:58",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.userservice.service.JwtServiceTest",
+          "timestamp": "2026-11-17T16:11:58",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.userservice.service.TokenBlacklistServiceTest",
+          "timestamp": "2026-11-17T16:11:59",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.ridehail.userservice.service.UserAuthenticationTest",
+          "timestamp": "2026-11-17T16:11:59",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ]
+    }
+  ]
+}

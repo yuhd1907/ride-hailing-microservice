@@ -23,9 +23,17 @@ public interface DriverService {
 
     DriverResponse releaseDriver(UUID driverId);
 
+    DriverResponse releaseDriver(UUID driverId, UUID tripId);
+
+    DriverResponse rejectTrip(UUID driverId, UUID tripId);
+
     DriverResponse startTrip(UUID driverId);
 
+    DriverResponse startTrip(UUID driverId, UUID tripId);
+
     DriverResponse completeTrip(UUID driverId);
+
+    DriverResponse completeTrip(UUID driverId, UUID tripId);
 
     DriverResponse goOnline(UUID driverId);
 

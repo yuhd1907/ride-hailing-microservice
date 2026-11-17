@@ -288,13 +288,23 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional
     public DriverResponse releaseDriver(UUID driverId) {
+        return releaseDriver(driverId, null);
+    }
+
+    @Override
+    @Transactional
+    public DriverResponse releaseDriver(UUID driverId, UUID tripId) {
         MDC.put("driverId", driverId.toString());
         MDC.put("action", "RELEASE_DRIVER");
 
-        int updatedRows = driverRepository.releaseDriver(driverId);
+        int updatedRows = tripId == null ? driverRepository.releaseDriver(driverId)
+                : driverRepository.releaseDriverForTrip(driverId, tripId);
         if (updatedRows == 0) {
             requireDriverExists(driverId);
             Driver existing = driverRepository.findById(driverId).orElse(null);
+            if (tripId != null && existing != null && !tripId.equals(existing.getCurrentTripId())) {
+                return driverMapper.toResponse(existing);
+            }
             if (existing != null && existing.getStatus() == DriverStatus.AVAILABLE) {
                 log.debug("[{}] Idempotent release cho driverId={} (đã AVAILABLE)", instanceId, driverId);
                 return driverMapper.toResponse(existing);
@@ -312,19 +322,59 @@ public class DriverServiceImpl implements DriverService {
     }
 
     /**
+     * Tài xế từ chối chuyến (RESERVED → AVAILABLE ngay, không chờ hết hạn giữ chỗ). Lũy
+     * đẳng: nếu tài xế không còn giữ chuyến này thì coi như đã từ chối xong
+     */
+    @Override
+    @Transactional
+    public DriverResponse rejectTrip(UUID driverId, UUID tripId) {
+        MDC.put("driverId", driverId.toString());
+        MDC.put("action", "REJECT_TRIP");
+        MDC.put("tripId", tripId.toString());
+
+        int updatedRows = driverRepository.rejectReservation(driverId, tripId);
+        if (updatedRows == 0) {
+            requireDriverExists(driverId);
+            Driver existing = driverRepository.findById(driverId)
+                .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
+            if (existing.getStatus() == DriverStatus.ON_TRIP && tripId.equals(existing.getCurrentTripId())) {
+                throw new InvalidStateTransitionException(
+                        "Tài xế " + driverId + " đã bắt đầu chuyến " + tripId + " nên không thể từ chối");
+            }
+            log.debug("[{}] Idempotent reject: driverId={} không còn giữ tripId={}", instanceId, driverId, tripId);
+            return driverMapper.toResponse(existing);
+        }
+
+        Driver driver = driverRepository.findById(driverId)
+            .orElseThrow(() -> new DriverNotFoundException("Không tìm thấy tài xế: " + driverId));
+
+        restoreLocation(driverId);
+        log.debug("[{}] driverId={} từ chối tripId={}, trở lại AVAILABLE", instanceId, driverId, tripId);
+        return driverMapper.toResponse(driver);
+    }
+
+    /**
      * Bắt đầu chuyến (RESERVED → ON_TRIP) - Lũy đẳng khi gọi lặp lại
      */
     @Override
     @Transactional
     public DriverResponse startTrip(UUID driverId) {
+        return startTrip(driverId, null);
+    }
+
+    @Override
+    @Transactional
+    public DriverResponse startTrip(UUID driverId, UUID tripId) {
         MDC.put("driverId", driverId.toString());
         MDC.put("action", "START_TRIP");
 
-        int updatedRows = driverRepository.startTrip(driverId);
+        int updatedRows = tripId == null ? driverRepository.startTrip(driverId)
+                : driverRepository.startTripForTrip(driverId, tripId);
         if (updatedRows == 0) {
             requireDriverExists(driverId);
             Driver existing = driverRepository.findById(driverId).orElse(null);
-            if (existing != null && existing.getStatus() == DriverStatus.ON_TRIP) {
+            if (existing != null && existing.getStatus() == DriverStatus.ON_TRIP
+                    && (tripId == null || tripId.equals(existing.getCurrentTripId()))) {
                 log.debug("[{}] Idempotent start-trip cho driverId={} (đã ON_TRIP)", instanceId, driverId);
                 return driverMapper.toResponse(existing);
             }
@@ -345,13 +395,23 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional
     public DriverResponse completeTrip(UUID driverId) {
+        return completeTrip(driverId, null);
+    }
+
+    @Override
+    @Transactional
+    public DriverResponse completeTrip(UUID driverId, UUID tripId) {
         MDC.put("driverId", driverId.toString());
         MDC.put("action", "COMPLETE_TRIP");
 
-        int updatedRows = driverRepository.completeTrip(driverId);
+        int updatedRows = tripId == null ? driverRepository.completeTrip(driverId)
+                : driverRepository.completeTripForTrip(driverId, tripId);
         if (updatedRows == 0) {
             requireDriverExists(driverId);
             Driver existing = driverRepository.findById(driverId).orElse(null);
+            if (tripId != null && existing != null && !tripId.equals(existing.getCurrentTripId())) {
+                return driverMapper.toResponse(existing);
+            }
             if (existing != null && existing.getStatus() == DriverStatus.AVAILABLE) {
                 log.debug("[{}] Idempotent complete-trip cho driverId={} (đã AVAILABLE)", instanceId, driverId);
                 return driverMapper.toResponse(existing);
