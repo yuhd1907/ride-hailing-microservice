@@ -40,8 +40,95 @@ async function runExperiment(options, deps) {
   return results;
 }
 
+function parseOptions(argv) {
+  const { parseArgs } = require('node:util');
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      runs: { type: 'string', default: '3' },
+      sizes: { type: 'string', default: '100,500,1000' },
+      consumers: { type: 'string', default: '1,3' },
+      warmup: { type: 'string', default: '200' },
+      timeout: { type: 'string', default: '120' },
+      out: { type: 'string', default: 'docs/evidence/perf' },
+    },
+  });
+  const int = (name, text, min) => {
+    const n = Number(text);
+    if (!Number.isInteger(n) || n < min) throw new Error(`--${name} phải là số nguyên ${min === 0 ? 'không âm' : 'dương'} (nhận "${text}")`);
+    return n;
+  };
+  const list = name => values[name].split(',').map(x => int(name, x.trim(), 1));
+  return {
+    consumers: list('consumers'),
+    sizes: list('sizes'),
+    runs: int('runs', values.runs, 1),
+    warmup: int('warmup', values.warmup, 0),
+    timeoutMs: int('timeout', values.timeout, 1) * 1000,
+    out: values.out,
+  };
+}
+
 async function main() {
-  throw new Error('Chưa triển khai');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  let options;
+  try {
+    options = parseOptions(process.argv.slice(2));
+  } catch (error) {
+    console.error(`Tham số không hợp lệ: ${error.message}`);
+    process.exit(2);
+  }
+  const infra = require('./perf/infra');
+  const { aggregate } = require('./perf/stats');
+  const report = require('./perf/report');
+  const log = message => console.log(`[${new Date().toISOString().slice(11, 19)}] ${message}`);
+  const config = infra.loadConfig();
+  let handles;
+  try {
+    handles = await infra.connect(config);
+    const restore = once(async () => {
+      log('Khôi phục: Payment về cấu hình mặc định, dọn queue của Trip, chạy lại trip_service');
+      await infra.restore(handles);
+      log('Đã khôi phục hệ thống');
+    });
+    process.once('SIGINT', async () => {
+      log('Nhận Ctrl+C, đang khôi phục hệ thống trước khi thoát...');
+      try {
+        await restore();
+      } catch (error) {
+        console.error(`Khôi phục thất bại: ${error.message}`);
+      }
+      process.exit(130);
+    });
+    const results = await runExperiment(options, {
+      preflight: () => infra.preflight(handles),
+      stopTrip: async () => { log('Tạm dừng trip_service'); infra.stopTrip(config); },
+      setConsumers: async consumers => {
+        log(`Tạo lại payment_service với ${consumers} consumer`);
+        return infra.setConsumers(handles, consumers);
+      },
+      measureRun: runOptions => infra.measureRun(handles, runOptions),
+      restore,
+      log,
+    });
+    const out = path.resolve(config.root, options.out);
+    fs.mkdirSync(out, { recursive: true });
+    const groups = aggregate(results);
+    const charts = report.chartsFor(groups);
+    const meta = { generatedAt: new Date().toISOString(), commit: infra.gitCommit(config), runsPerConfig: options.runs };
+    fs.writeFileSync(path.join(out, 'raw.csv'), report.toCsv(results));
+    fs.writeFileSync(path.join(out, 'results.md'), report.resultsMarkdown(groups, meta));
+    fs.writeFileSync(path.join(out, 'throughput.svg'), charts.throughput);
+    fs.writeFileSync(path.join(out, 'latency-p95.svg'), charts.latencyP95);
+    fs.writeFileSync(path.join(out, 'environment.txt'), infra.environmentInfo(config, options));
+    log(`Xong ${results.length} lượt đo. Kết quả trong ${path.relative(config.root, out) || out}`);
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  } finally {
+    if (handles) await handles.close();
+  }
 }
 
 module.exports = { runExperiment, once };
