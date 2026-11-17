@@ -1,0 +1,6 @@
+# Chi dung cho scripts/perf-payment-notification.js: doi so consumer cua Payment.
+# Chay kem file chinh: docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.perf.yml ...
+services:
+  payment_service:
+    environment:
+      PAYMENT_LISTENER_CONCURRENCY: ${PAYMENT_LISTENER_CONCURRENCY:-3}
