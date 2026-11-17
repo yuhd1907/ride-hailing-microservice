@@ -24,7 +24,7 @@
 #    matching-service     8084   db 5436
 #    payment-service      8085   db 5437
 #    notification-service 8086   db 5438
-#    redis 6379, rabbitmq 5672 / 15672 (management UI)
+#    redis 6379, rabbitmq 5672 / 15672 (management UI), profile observability: zipkin 9411
 # =====================================================================
 
 name: ride-hailing-microservice
@@ -91,6 +91,23 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  # ---------- Giam sat (tuy chon): chi chay khi them --profile observability ----------
+  #   docker compose -f deploy/docker-compose.yml --env-file .env --profile observability up -d
+  #   Zipkin http://localhost:9411
+  #   Khong bat profile thi cac service van chay binh thuong.
+
+  # Distributed tracing: cac service Java gui span ve day
+  zipkin:
+    image: openzipkin/zipkin-slim:3
+    profiles: [observability]
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: -Xms64m -Xmx256m
+    ports:
+      - "${ZIPKIN_PORT:-9411}:9411"
+    networks:
+      - ride-hailing-net
 
   user_postgres:
     <<: *postgres
@@ -172,6 +189,7 @@ services:
     environment:
       SERVER_PORT: 8080
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       SPRING_DATA_REDIS_HOST: redis
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
     depends_on:
@@ -196,6 +214,7 @@ services:
     environment:
       SERVER_PORT: 8081
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       SPRING_DATASOURCE_URL: jdbc:postgresql://user_postgres:5432/${USER_DB_NAME:-user_db}
       SPRING_DATASOURCE_USERNAME: ${USER_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:-postgres_password}
@@ -227,6 +246,7 @@ services:
       SERVER_PORT: 8082
       EUREKA_INSTANCE_INSTANCE_ID: driver-service-instance-1
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       SPRING_DATASOURCE_URL: jdbc:postgresql://driver_postgres:5432/${DRIVER_DB_NAME:-driver_db}
       SPRING_DATASOURCE_USERNAME: ${DRIVER_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${DRIVER_DB_PASSWORD:-postgres_password}
@@ -328,6 +348,7 @@ services:
     environment:
       SERVER_PORT: 8085
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       SPRING_DATASOURCE_URL: jdbc:postgresql://payment_postgres:5432/${PAYMENT_DB_NAME:-payment_db}
       SPRING_DATASOURCE_USERNAME: ${PAYMENT_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${PAYMENT_DB_PASSWORD:-postgres_password}
@@ -359,6 +380,7 @@ services:
     environment:
       SERVER_PORT: 8086
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       SPRING_DATASOURCE_URL: jdbc:postgresql://notification_postgres:5432/${NOTIFICATION_DB_NAME:-notification_db}
       SPRING_DATASOURCE_USERNAME: ${NOTIFICATION_DB_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-postgres_password}

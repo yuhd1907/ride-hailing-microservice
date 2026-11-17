@@ -50,6 +50,14 @@ eureka:
 
 # Actuator
 management:
+  # Distributed tracing: mọi request/message tạo span và gửi sang Zipkin.
+  # correlationId được gắn làm tag của span (xem TracingConfig) để tìm trace theo ID trong log.
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
   endpoints:
     web:
       exposure:
