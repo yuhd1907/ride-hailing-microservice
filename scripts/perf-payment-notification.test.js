@@ -161,3 +161,59 @@ test('resultsMarkdown có hai bảng, một dòng mỗi cấu hình và hai bi�
   assert.ok(md.includes('![Thông lượng](throughput.svg)'));
   assert.ok(md.includes('![Độ trễ p95](latency-p95.svg)'));
 });
+
+const { runExperiment, once } = require('./perf-payment-notification');
+
+function fakeDeps(overrides = {}) {
+  const calls = [];
+  const deps = {
+    preflight: async () => [],
+    stopTrip: async () => { calls.push('stopTrip'); },
+    setConsumers: async c => { calls.push(`set:${c}`); return c; },
+    measureRun: async ({ consumers, events, run }) => { calls.push(`run:${consumers}:${events}:${run}`); return { consumers, events, run }; },
+    restore: async () => { calls.push('restore'); },
+    log: () => {},
+    ...overrides,
+  };
+  return { deps, calls };
+}
+const options = { consumers: [1, 3], sizes: [100, 500], runs: 2, warmup: 200, timeoutMs: 120000 };
+
+test('runExperiment chạy theo nhóm consumer, bỏ lượt khởi động và khôi phục một lần', async () => {
+  const { deps, calls } = fakeDeps();
+  const results = await runExperiment(options, deps);
+  assert.deepEqual(calls, ['stopTrip',
+    'set:1', 'run:1:200:0', 'run:1:100:1', 'run:1:100:2', 'run:1:500:1', 'run:1:500:2',
+    'set:3', 'run:3:200:0', 'run:3:100:1', 'run:3:100:2', 'run:3:500:1', 'run:3:500:2',
+    'restore']);
+  assert.equal(results.length, 8);
+  assert.ok(results.every(r => r.run > 0));
+});
+
+test('runExperiment: preflight lỗi thì không đổi gì', async () => {
+  const { deps, calls } = fakeDeps({ preflight: async () => ['queue trip-service.payment.failed còn 7 message'] });
+  await assert.rejects(runExperiment(options, deps), /trip-service\.payment\.failed/);
+  assert.deepEqual(calls, []);
+});
+
+test('runExperiment: lỗi giữa chừng vẫn khôi phục', async () => {
+  const { deps, calls } = fakeDeps({ measureRun: async ({ events }) => { if (events === 500) throw new Error('Quá thời gian chờ'); return {}; } });
+  await assert.rejects(runExperiment(options, deps), /Quá thời gian chờ/);
+  assert.equal(calls.filter(c => c === 'restore').length, 1);
+  assert.equal(calls.at(-1), 'restore');
+});
+
+test('runExperiment: sai số consumer thì dừng và khôi phục', async () => {
+  const { deps, calls } = fakeDeps({ setConsumers: async () => 3 });
+  await assert.rejects(runExperiment(options, deps), /consumer/);
+  assert.ok(!calls.some(c => c.startsWith('run:')));
+  assert.equal(calls.at(-1), 'restore');
+});
+
+test('once chỉ chạy hàm một lần', async () => {
+  let n = 0;
+  const f = once(async () => ++n);
+  await Promise.all([f(), f()]);
+  await f();
+  assert.equal(n, 1);
+});
