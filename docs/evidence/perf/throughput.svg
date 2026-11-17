@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#222">
+<rect x="0" y="0" width="720" height="420" fill="#ffffff"/>
+<text x="360" y="28" text-anchor="middle" font-size="17" font-weight="bold">Thông lượng đầu-cuối Payment → Notification</text>
+<line x1="72" x2="696" y1="356" y2="356" stroke="#ddd"/>
+<text x="64" y="360" text-anchor="end">0</text>
+<line x1="72" x2="696" y1="298.8" y2="298.8" stroke="#ddd"/>
+<text x="64" y="302.8" text-anchor="end">50</text>
+<line x1="72" x2="696" y1="241.6" y2="241.6" stroke="#ddd"/>
+<text x="64" y="245.6" text-anchor="end">100</text>
+<line x1="72" x2="696" y1="184.4" y2="184.4" stroke="#ddd"/>
+<text x="64" y="188.4" text-anchor="end">150</text>
+<line x1="72" x2="696" y1="127.19999999999999" y2="127.19999999999999" stroke="#ddd"/>
+<text x="64" y="131.2" text-anchor="end">200</text>
+<line x1="72" x2="696" y1="70" y2="70" stroke="#ddd"/>
+<text x="64" y="74" text-anchor="end">250</text>
+<line x1="72" x2="72" y1="70" y2="356" stroke="#444"/>
+<line x1="72" x2="696" y1="356" y2="356" stroke="#444"/>
+<text x="176" y="376" text-anchor="middle">100</text>
+<rect class="bar" x="105.2" y="267.73833450302635" width="68.8" height="88.26166549697365" fill="#9ecae1" stroke="#333"/>
+<line x1="139.6" x2="139.6" y1="272.4977640126773" y2="263.91372335543866" stroke="#000" stroke-width="1.5"/>
+<line x1="133.6" x2="145.6" y1="272.4977640126773" y2="272.4977640126773" stroke="#000" stroke-width="1.5"/>
+<line x1="133.6" x2="145.6" y1="263.91372335543866" y2="263.91372335543866" stroke="#000" stroke-width="1.5"/>
+<text x="139.6" y="257.91372335543866" text-anchor="middle" font-weight="bold">77.2</text>
+<rect class="bar" x="178" y="270.77538564733607" width="68.8" height="85.22461435266393" fill="#08519c" stroke="#333"/>
+<line x1="212.4" x2="212.4" y1="274.74419517662966" y2="265.35670829076815" stroke="#000" stroke-width="1.5"/>
+<line x1="206.4" x2="218.4" y1="274.74419517662966" y2="274.74419517662966" stroke="#000" stroke-width="1.5"/>
+<line x1="206.4" x2="218.4" y1="265.35670829076815" y2="265.35670829076815" stroke="#000" stroke-width="1.5"/>
+<text x="212.4" y="259.35670829076815" text-anchor="middle" font-weight="bold">74.5</text>
+<text x="384" y="376" text-anchor="middle">500</text>
+<rect class="bar" x="313.2" y="175.0330708980658" width="68.8" height="180.9669291019342" fill="#9ecae1" stroke="#333"/>
+<line x1="347.59999999999997" x2="347.59999999999997" y1="195.91935403974207" y2="151.19556018347248" stroke="#000" stroke-width="1.5"/>
+<line x1="341.59999999999997" x2="353.59999999999997" y1="195.91935403974207" y2="195.91935403974207" stroke="#000" stroke-width="1.5"/>
+<line x1="341.59999999999997" x2="353.59999999999997" y1="151.19556018347248" y2="151.19556018347248" stroke="#000" stroke-width="1.5"/>
+<text x="347.59999999999997" y="145.19556018347248" text-anchor="middle" font-weight="bold">158</text>
+<rect class="bar" x="386" y="160.9217550882276" width="68.8" height="195.0782449117724" fill="#08519c" stroke="#333"/>
+<line x1="420.4" x2="420.4" y1="173.34595655570607" y2="142.24462124554634" stroke="#000" stroke-width="1.5"/>
+<line x1="414.4" x2="426.4" y1="173.34595655570607" y2="173.34595655570607" stroke="#000" stroke-width="1.5"/>
+<line x1="414.4" x2="426.4" y1="142.24462124554634" y2="142.24462124554634" stroke="#000" stroke-width="1.5"/>
+<text x="420.4" y="136.24462124554634" text-anchor="middle" font-weight="bold">171</text>
+<text x="592" y="376" text-anchor="middle">1000</text>
+<rect class="bar" x="521.2" y="142.87331647623253" width="68.8" height="213.12668352376747" fill="#9ecae1" stroke="#333"/>
+<line x1="555.6" x2="555.6" y1="162.96963822378703" y2="130.14788836972656" stroke="#000" stroke-width="1.5"/>
+<line x1="549.6" x2="561.6" y1="162.96963822378703" y2="162.96963822378703" stroke="#000" stroke-width="1.5"/>
+<line x1="549.6" x2="561.6" y1="130.14788836972656" y2="130.14788836972656" stroke="#000" stroke-width="1.5"/>
+<text x="555.6" y="124.14788836972656" text-anchor="middle" font-weight="bold">186</text>
+<rect class="bar" x="594" y="140.17025364111078" width="68.8" height="215.82974635888922" fill="#08519c" stroke="#333"/>
+<line x1="628.4" x2="628.4" y1="171.83068961577405" y2="117.91225278287575" stroke="#000" stroke-width="1.5"/>
+<line x1="622.4" x2="634.4" y1="171.83068961577405" y2="171.83068961577405" stroke="#000" stroke-width="1.5"/>
+<line x1="622.4" x2="634.4" y1="117.91225278287575" y2="117.91225278287575" stroke="#000" stroke-width="1.5"/>
+<text x="628.4" y="111.91225278287575" text-anchor="middle" font-weight="bold">189</text>
+<text x="384" y="404" text-anchor="middle">Số event mỗi lượt</text>
+<text transform="translate(20 213) rotate(-90)" text-anchor="middle">event/giây</text>
+<rect x="436" y="44" width="14" height="14" fill="#9ecae1" stroke="#333"/>
+<text x="456" y="56">1 consumer</text>
+<rect x="566" y="44" width="14" height="14" fill="#08519c" stroke="#333"/>
+<text x="586" y="56">3 consumer</text>
+</svg>
