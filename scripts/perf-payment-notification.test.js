@@ -65,3 +65,58 @@ test('aggregate gom theo cấu hình, lấy trung bình và khoảng min-max', (
   assert.equal(groups[0].maxMs, 900);
   assert.equal(groups[0].relayP95Ms, 500);
 });
+
+const checks = require('./perf/checks');
+const healthy = checks.REQUIRED_CONTAINERS.map(name => ({ name, health: 'healthy' }));
+const emptyQueues = [checks.QUEUES.payment, checks.QUEUES.notification, ...checks.QUEUES.trip].map(name => ({ name, exists: true, messages: 0 }));
+
+test('preflightProblems chấp nhận hệ thống sạch', () => {
+  assert.deepEqual(checks.preflightProblems({ containers: healthy, queues: emptyQueues, pendingOutbox: 0 }), []);
+});
+
+test('preflightProblems báo container, queue tồn đọng và outbox', () => {
+  const problems = checks.preflightProblems({
+    containers: healthy.map(c => (c.name === 'payment_service' ? { ...c, health: 'starting' } : c)),
+    queues: emptyQueues.map(q => (q.name === 'trip-service.payment.failed' ? { ...q, messages: 7 } : q)),
+    pendingOutbox: 3,
+  });
+  assert.equal(problems.length, 3);
+  assert.ok(problems.some(p => p.includes('payment_service')));
+  assert.ok(problems.some(p => p.includes('trip-service.payment.failed')));
+  assert.ok(problems.some(p => p.includes('outbox')));
+});
+
+test('preflightProblems báo thiếu queue của Payment', () => {
+  const queues = emptyQueues.map(q => (q.name === checks.QUEUES.payment ? { ...q, exists: false } : q));
+  assert.ok(checks.preflightProblems({ containers: healthy, queues, pendingOutbox: 0 }).some(p => p.includes(checks.QUEUES.payment)));
+});
+
+test('consumerProblems phát hiện biến số consumer không có tác dụng', () => {
+  assert.deepEqual(checks.consumerProblems(1, 1), []);
+  const [problem] = checks.consumerProblems(3, 1);
+  assert.match(problem, /3/);
+  assert.match(problem, /1/);
+});
+
+test('runProblems báo payment không SUCCESS, thiếu thông báo và DLQ tăng', () => {
+  const dlq = { 'payment-service.trip.completed.dlq': 0, 'notification-service.payment.succeeded.dlq': 0 };
+  assert.deepEqual(checks.runProblems({ expected: 100, successCount: 100, notifiedCount: 100, dlqBefore: dlq, dlqAfter: dlq }), []);
+  const problems = checks.runProblems({ expected: 100, successCount: 99, notifiedCount: 98, dlqBefore: dlq, dlqAfter: { ...dlq, 'payment-service.trip.completed.dlq': 1 } });
+  assert.equal(problems.length, 3);
+  assert.ok(problems.some(p => p.includes('SUCCESS')));
+  assert.ok(problems.some(p => p.includes('thông báo')));
+  assert.ok(problems.some(p => p.includes('payment-service.trip.completed.dlq')));
+});
+
+test('waitFor trả về khi điều kiện đạt và báo lỗi khi quá hạn', async () => {
+  let calls = 0;
+  const waits = [];
+  await checks.waitFor(async () => ++calls === 3, { label: 'x', timeoutMs: 1000, intervalMs: 50, sleep: async ms => waits.push(ms) });
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [50, 50]);
+  let clock = 0;
+  await assert.rejects(
+    checks.waitFor(async () => false, { label: 'thông báo của lượt', timeoutMs: 120000, now: () => clock, sleep: async () => { clock += 60000; } }),
+    /Quá thời gian chờ.*thông báo của lượt/,
+  );
+});
