@@ -30,6 +30,9 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
 
+    // Metrics cho Prometheus: mở endpoint /actuator/prometheus
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
     implementation 'org.springframework.boot:spring-boot-starter-amqp'
     // WebSocket cho thông báo real-time (giai đoạn sau)
     implementation 'org.springframework.boot:spring-boot-starter-websocket'

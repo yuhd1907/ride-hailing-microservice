@@ -24,7 +24,7 @@
 #    matching-service     8084   db 5436
 #    payment-service      8085   db 5437
 #    notification-service 8086   db 5438
-#    redis 6379, rabbitmq 5672 / 15672 (management UI), profile observability: zipkin 9411
+#    redis 6379, rabbitmq 5672 / 15672 (management UI), profile observability: zipkin 9411, prometheus 9090, grafana 3000
 # =====================================================================
 
 name: ride-hailing-microservice
@@ -94,8 +94,8 @@ services:
 
   # ---------- Giam sat (tuy chon): chi chay khi them --profile observability ----------
   #   docker compose -f deploy/docker-compose.yml --env-file .env --profile observability up -d
-  #   Zipkin http://localhost:9411
-  #   Khong bat profile thi cac service van chay binh thuong.
+  #   Grafana http://localhost:3000 (dashboard RideFlow), Prometheus :9090, Zipkin :9411
+  #   Cau hinh nam trong deploy/observability/. Khong bat profile thi cac service van chay binh thuong.
 
   # Distributed tracing: cac service Java gui span ve day
   zipkin:
@@ -106,6 +106,70 @@ services:
       JAVA_OPTS: -Xms64m -Xmx256m
     ports:
       - "${ZIPKIN_PORT:-9411}:9411"
+    networks:
+      - ride-hailing-net
+
+  # Metrics: tu tim instance qua Eureka roi scrape /actuator/prometheus (Java) va /metrics (Node)
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: [observability]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=1d
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      eureka_server:
+        condition: service_healthy
+    networks:
+      - ride-hailing-net
+
+  # Luu log tap trung
+  loki:
+    image: grafana/loki:3.4.2
+    profiles: [observability]
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - ride-hailing-net
+
+  # Doc log cua moi container qua Docker socket (chi doc) va day ve Loki
+  promtail:
+    image: grafana/promtail:3.4.2
+    profiles: [observability]
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./observability/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - ride-hailing-net
+
+  # Dashboard giam sat: metrics (Prometheus), log (Loki), trace (Zipkin) tren mot man hinh
+  grafana:
+    image: grafana/grafana:11.4.0
+    profiles: [observability]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Cho xem dashboard khong can dang nhap (chi quyen xem) de tien demo
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/rideflow.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+      - loki
     networks:
       - ride-hailing-net
 

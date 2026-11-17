@@ -212,6 +212,33 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\tests\phase2-payment-notification.ps1
 ```
 
+## Giám sát: metrics, log tập trung và trace
+
+Nhóm giám sát là tùy chọn, chỉ chạy khi thêm `--profile observability`; không bật thì các service vẫn chạy bình thường. Nhóm này cần thêm khoảng 700 MB RAM cho Docker. Với Docker Desktop dùng WSL 2, giới hạn mặc định là một nửa RAM máy; ở mức 3,5 GB, cả hệ thống kèm nhóm giám sát chạy rất chậm (request có thể quá 5s và làm circuit breaker mở). Nên nâng lên khoảng 5 GB bằng file `%USERPROFILE%\.wslconfig` gồm hai dòng `[wsl2]` và `memory=5GB`, rồi chạy `wsl --shutdown` và mở lại Docker Desktop.
+
+```powershell
+docker compose -f deploy/docker-compose.yml --env-file .env --profile observability up --build -d
+```
+
+| Công cụ | Địa chỉ | Dùng để |
+| --- | --- | --- |
+| Grafana | http://localhost:3000 | Dashboard "RideFlow - Giám sát service": instance đang chạy, trạng thái circuit breaker, số request, lỗi 5xx, thời gian xử lý p95, bộ nhớ và log của mọi service. Xem không cần đăng nhập; tài khoản quản trị lấy từ `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` trong `.env` |
+| Prometheus | http://localhost:9090 | Thu metrics mỗi 15s. Tự tìm instance qua Eureka nên instance thứ hai của Driver được thêm tự động |
+| Loki + Promtail | (xem qua Grafana) | Gom log của mọi container. Tìm theo correlationId bằng ô "Tìm trong log" trên dashboard, hoặc truy vấn `{service=~".+"} \|= "<correlation-id>"` trong Grafana Explore |
+| Zipkin | http://localhost:9411 | Xem trace của request đi qua nhiều service; tìm theo tag `correlationId=<correlation-id>` |
+
+- **Metrics:** service Java mở `/actuator/prometheus`; Trip và Matching mở `/metrics` với cùng tên metric `http_server_requests_seconds` nên dùng chung một dashboard.
+- **Log:** Promtail đọc log qua Docker socket (chỉ đọc), tách trường `level` của log JSON thành nhãn để lọc.
+- **Trace:** năm service Java gửi span sang Zipkin, gồm cả span publish/consume RabbitMQ của Payment và Notification. Trip và Matching (Node.js) chưa gửi span, nên trace bị ngắt ở hai service này; dùng correlationId để nối các đoạn.
+- Cấu hình nằm trong `deploy/observability/`.
+
+Kiểm tra trên hệ thống đang chạy:
+
+```powershell
+node scripts/check-observability.js
+node scripts/check-tracing.js
+```
+
 ## Build và kiểm thử
 
 Build toàn bộ sáu module Java, bao gồm kiểm thử và kiểm tra định dạng:

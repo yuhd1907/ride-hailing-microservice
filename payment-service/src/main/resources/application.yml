@@ -73,6 +73,14 @@ eureka:
 
 # Actuator
 management:
+  # Metrics cho Prometheus/Grafana: gắn tên service vào mọi metric và xuất histogram
+  # thời gian xử lý request để tính p95.
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   # Distributed tracing: mọi request/message tạo span và gửi sang Zipkin.
   # correlationId được gắn làm tag của span (xem TracingConfig) để tìm trace theo ID trong log.
   tracing:
@@ -84,7 +92,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, prometheus
   endpoint:
     health:
       show-details: always
