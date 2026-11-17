@@ -238,6 +238,9 @@ node tests/test-redis-geo.js
 # Hai kịch bản dưới cần profile scale và hai instance đã đăng ký Eureka
 node tests/test-concurrency.js
 node scripts/test-load-balancing.js
+
+# Tài xế từ chối chuyến -> sẵn sàng ngay -> Matching ghép tài xế khác (cần npm ci trong trip-service)
+node scripts/check-driver-reject.js
 ```
 
 ## Tài liệu và vận hành

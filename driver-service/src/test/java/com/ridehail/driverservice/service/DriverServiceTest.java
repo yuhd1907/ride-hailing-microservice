@@ -250,6 +250,76 @@ class DriverServiceTest {
     }
 
     @Test
+    void rejectingDriverBecomesAvailableImmediatelyAndIsSearchableAgain() {
+        UUID driverId = UUID.fromString("fd699acc-6544-44a9-9634-5396060c61b8");
+        UUID tripId = UUID.fromString("93d8f465-65ac-491d-a4d0-b29cc65775cd");
+
+        var driver = new Driver();
+        driver.setId(driverId);
+        driver.setStatus(DriverStatus.RESERVED);
+        driver.setCurrentTripId(tripId);
+        driver.setUpdatedAt(LocalDateTime.now());
+
+        var location = mock(DriverLocation.class);
+        when(location.getLatitude()).thenReturn(21.0285);
+        when(location.getLongitude()).thenReturn(105.8542);
+        when(location.getUpdatedAt()).thenReturn(LocalDateTime.now().minusSeconds(20));
+        when(locations.findById(driverId)).thenReturn(Optional.of(location));
+        when(drivers.findById(driverId)).thenReturn(Optional.of(driver));
+        when(drivers.rejectReservation(driverId, tripId)).thenAnswer(invocation -> {
+            driver.setStatus(DriverStatus.AVAILABLE);
+            driver.setCurrentTripId(null);
+            driver.setReservationId(null);
+            return 1;
+        });
+
+        var rejected = service.rejectTrip(driverId, tripId);
+        assertEquals("AVAILABLE", rejected.getStatus());
+        assertEquals(null, rejected.getCurrentTripId());
+        // Không dùng lệnh release chung: chỉ nhả đúng lượt giữ của chuyến bị từ chối.
+        verify(drivers, never()).releaseDriver(driverId);
+        verify(geo).updateLocation(driverId, 21.0285, 105.8542);
+    }
+
+    @Test
+    void rejectIsIdempotentAndNeverReleasesAnotherTripOrAStartedTrip() {
+        UUID driverId = UUID.fromString("fd699acc-6544-44a9-9634-5396060c61b8");
+        UUID rejectedTripId = UUID.fromString("93d8f465-65ac-491d-a4d0-b29cc65775cd");
+        UUID otherTripId = UUID.fromString("0b4a3c7e-2f7d-4c1b-9a53-6f3f6f0f7a11");
+
+        var driver = new Driver();
+        driver.setId(driverId);
+        driver.setStatus(DriverStatus.AVAILABLE);
+        when(drivers.existsById(driverId)).thenReturn(true);
+        when(drivers.findById(driverId)).thenReturn(Optional.of(driver));
+        when(drivers.rejectReservation(driverId, rejectedTripId)).thenReturn(0);
+
+        // 1. Gọi lặp lại khi tài xế đã AVAILABLE -> thành công (idempotent)
+        assertEquals("AVAILABLE", service.rejectTrip(driverId, rejectedTripId).getStatus());
+
+        // 2. Yêu cầu từ chối đến muộn khi tài xế đã được giữ cho chuyến khác ->
+        // giữ nguyên lượt giữ mới
+        driver.setStatus(DriverStatus.RESERVED);
+        driver.setCurrentTripId(otherTripId);
+        var stillReserved = service.rejectTrip(driverId, rejectedTripId);
+        assertEquals("RESERVED", stillReserved.getStatus());
+        assertEquals(otherTripId, stillReserved.getCurrentTripId());
+
+        // 3. Đã bắt đầu chính chuyến đó -> không thể từ chối
+        driver.setStatus(DriverStatus.ON_TRIP);
+        driver.setCurrentTripId(rejectedTripId);
+        assertThrows(InvalidStateTransitionException.class, () -> service.rejectTrip(driverId, rejectedTripId));
+
+        // 4. Tài xế không tồn tại -> 404
+        UUID missingDriverId = UUID.fromString("b83ea108-d819-4bb8-b213-986c3a38e0bd");
+        when(drivers.existsById(missingDriverId)).thenReturn(false);
+        assertThrows(DriverNotFoundException.class, () -> service.rejectTrip(missingDriverId, rejectedTripId));
+
+        verify(drivers, never()).releaseDriver(any(UUID.class));
+        verifyNoInteractions(geo);
+    }
+
+    @Test
     void expiredReservationsAreAutomaticallyReleasedAndRestoredToGeo() {
         UUID driverId = UUID.fromString("fd699acc-6544-44a9-9634-5396060c61b8");
         var expiredDriver = new Driver();

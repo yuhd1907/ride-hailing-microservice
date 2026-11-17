@@ -80,6 +80,7 @@ ack sau commit. Trip/Matching dùng confirm channel và outbox để gửi sau c
 | `payment.succeeded` | Payment Service | Trip Service (TV2), Notification Service |
 | `payment.failed` | Payment Service | Trip Service (TV2), Notification Service |
 | `trip.compensated` | Trip Service (TV2) | Notification Service |
+| `trip.driver_rejected` | Trip Service (TV2) | Matching Service (TV2) |
 
 ### 2.1 `trip.completed`
 
@@ -230,6 +231,40 @@ Trip phát cho Matching sau khi tạo chuyến. Payload bắt buộc: `tripId`, 
 và `fareAmount`. Queue `matching-service.trip.requested`.
 Trip consume thêm queue `trip-service.matching.driver_assigned` để gán tài xế.
 
+### 2.7 `trip.driver_rejected`
+
+Tài xế đã được ghép từ chối chuyến (`POST /trips/{id}/reject`). Trip phát event
+này sau khi Driver Service đã trả tài xế về `AVAILABLE` và chuyến đã về `MATCHING`.
+Matching hủy lượt ghép cũ, loại tài xế vừa từ chối và ghép tài xế khác, rồi phát
+lại `matching.driver_assigned`. Queue `matching-service.trip.driver_rejected`.
+
+| Field | Kiểu | Bắt buộc | Ghi chú |
+|---|---|---|---|
+| `tripId` | UUID | ✔ | |
+| `riderId` | UUID | ✔ | |
+| `driverId` | UUID | ✔ | tài xế vừa từ chối |
+| `pickup` | object `{lat, lng}` | ✔ | điểm đón, dùng để tìm lại tài xế gần |
+| `rejectedAt` | ISO-8601 UTC | ✔ | |
+
+```json
+{
+  "eventId": "4a5b6c7d-8e9f-4a0b-9c1d-2e3f4a5b6c7d",
+  "eventType": "trip.driver_rejected",
+  "correlationId": "3a7b9c1d-2e4f-4a6b-8c0d-1e2f3a4b5c6d",
+  "occurredAt": "2026-11-16T09:06:00Z",
+  "payload": {
+    "tripId": "5b0e6f2a-1c3d-4e5f-8a9b-0c1d2e3f4a5b",
+    "riderId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    "driverId": "d4c3b2a1-6f5e-4b7a-9d8c-5d4c3b2a1f0e",
+    "pickup": { "lat": 10.77, "lng": 106.7 },
+    "rejectedAt": "2026-11-16T09:06:00Z"
+  }
+}
+```
+
+Vì một chuyến có thể được ghép nhiều lần, consumer của `matching.driver_assigned`
+có thể nhận nhiều event cho cùng `tripId` (mỗi event một `eventId` và `driverId`).
+
 ## 3. Quyết định hợp đồng TV2 (2026-11-10)
 
 1. Đồng ý exchange `rideflow.events` topic durable; routing key bằng eventType.
@@ -251,3 +286,4 @@ khi vắng mặt Trip lấy tài xế đã lưu trong DB, khi có thì kiểm tr
 | 2026-10-18 | TV Payment/Notification | Bản nháp đầu tiên |
 | 2026-10-25 | TV Payment/Notification | Chốt mọi ID là UUID (idempotency key = `tripId`), thêm quy ước Correlation ID và tài khoản RabbitMQ (mục 1.5) |
 | 2026-11-10 | TV2 Trip/Matching | AGREED; riderId, CANCELLED; trả lời 6 câu hỏi; retry/DLQ, trip.requested và outbox |
+| 2026-11-16 | TV1 Driver/Gateway (phối hợp TV2) | Thêm `trip.driver_rejected` (mục 2.7) cho luồng tài xế từ chối chuyến; không đổi field của event cũ |

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.ridehail.driverservice.dto.request.RejectTripRequest;
 import com.ridehail.driverservice.dto.request.ReserveDriverRequest;
 import com.ridehail.driverservice.dto.response.DriverResponse;
 import com.ridehail.driverservice.service.DriverService;
@@ -63,6 +64,18 @@ public class DriverInternalController {
     public ResponseEntity<DriverResponse> releaseDriver(@PathVariable UUID id) {
 
         DriverResponse response = driverService.releaseDriver(id);
+        return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);
+    }
+
+    /**
+     * POST /internal/drivers/{id}/reject - Tài xế từ chối chuyến (cho TV2 Trip Service)
+     * Trả tài xế về AVAILABLE ngay; chỉ nhả lượt giữ của đúng tripId trong body
+     */
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<DriverResponse> rejectTrip(@PathVariable UUID id,
+            @Valid @RequestBody RejectTripRequest request) {
+
+        DriverResponse response = driverService.rejectTrip(id, request.getTripId());
         return ResponseEntity.ok().header("X-Handled-By-Instance", driverService.getInstanceId()).body(response);
     }
 

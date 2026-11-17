@@ -37,6 +37,15 @@ module.exports.prepare = async event => {
     await client.query('UPDATE matching_requests SET "selectedDriverId"=$2 WHERE "tripId"=$1', [event.payload.tripId, candidate.id]);
   });
 };
+// Tài xế từ chối chuyến: hủy lượt ghép cũ rồi ghép lại. Điều kiện ASSIGNED + đúng tài xế
+// làm bước hủy lũy đẳng, nên message gửi lại không phá lượt ghép mới.
+module.exports.rejected = async event => {
+  const { tripId, driverId } = event.payload;
+  await events.transaction(async client => {
+    await client.query('UPDATE matching_requests SET status=$3, "selectedDriverId"=NULL, "reservationId"=$4, "attemptedDriverIds"=CASE WHEN $2::uuid = ANY("attemptedDriverIds") THEN "attemptedDriverIds" ELSE array_append("attemptedDriverIds", $2::uuid) END WHERE "tripId"=$1 AND status=$5 AND "selectedDriverId"=$2', [tripId, driverId, 'PENDING', crypto.randomUUID(), 'ASSIGNED']);
+  });
+  await module.exports.handle(event);
+};
 module.exports.handle = async event => {
   await module.exports.prepare(event);
   try { await module.exports(event); }
