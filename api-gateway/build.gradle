@@ -25,6 +25,9 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
 
+    // Circuit breaker cho từng service phía sau Gateway (Resilience4j, bản reactive)
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j'
+
     // Redis Reactive cho Gateway (Rate Limiter & Blacklist)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
 

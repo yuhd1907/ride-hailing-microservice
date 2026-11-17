@@ -32,13 +32,15 @@ Mỗi service nghiệp vụ dùng một database PostgreSQL riêng (`user_db`, `
 
 Gateway định tuyến bằng `lb://<SERVICE-NAME>` thông qua Eureka và Spring Cloud LoadBalancer. Driver có thể chạy hai instance để kiểm tra cân bằng tải và xử lý yêu cầu giữ tài xế đồng thời. Khi một service dừng, service đó hủy đăng ký Eureka và Gateway trả `503` cho tới khi service chạy lại.
 
+Gateway bọc mọi route `lb://` bằng circuit breaker (Resilience4j), mỗi service một breaker dùng chung cho các route của service đó. Một lần gọi bị tính là lỗi khi không kết nối được, không có instance, quá 5s không trả lời, hoặc service trả `500/502/503/504`. Từ 5 lần gọi trở lên trong 10 lần gần nhất mà có ít nhất 50% lỗi thì breaker mở (`OPEN`): Gateway trả `503` ngay kèm JSON `{"service": ..., "circuitState": "OPEN"}` mà không gọi service. Sau 10s breaker tự sang `HALF_OPEN`, cho 3 lần gọi thử; thành công thì đóng lại, còn lỗi thì mở tiếp. Xem trạng thái tại `GET /actuator/circuitbreakers` của Gateway; cấu hình nằm trong `api-gateway/src/main/resources/application.yml` (mục `resilience4j`).
+
 ## Các thành phần
 
 Các cổng bên dưới là cổng mặc định truy cập từ máy host.
 
 | Thành phần | Cổng | Công nghệ | Vai trò |
 | --- | --- | --- | --- |
-| API Gateway | 8080 | Spring Cloud Gateway | Định tuyến, kiểm tra JWT và blacklist, giới hạn request |
+| API Gateway | 8080 | Spring Cloud Gateway | Định tuyến, kiểm tra JWT và blacklist, giới hạn request, circuit breaker theo service |
 | Eureka Server | 8761 | Spring Cloud Netflix | Service registry và dashboard |
 | User Service | 8081 | Spring Boot | Đăng ký, đăng nhập, đăng xuất và hồ sơ người dùng; route `/auth/**`, `/users/**` |
 | Driver Service | 8082 | Spring Boot | Hồ sơ, trạng thái, vị trí và giữ/giải phóng tài xế; route `/drivers/**` |
@@ -241,6 +243,9 @@ node scripts/test-load-balancing.js
 
 # Tài xế từ chối chuyến -> sẵn sàng ngay -> Matching ghép tài xế khác (cần npm ci trong trip-service)
 node scripts/check-driver-reject.js
+
+# Circuit breaker: script tự pause/stop rồi bật lại driver_service_1, chạy khoảng 2-3 phút
+node scripts/check-circuit-breaker.js
 ```
 
 ## Tài liệu và vận hành
