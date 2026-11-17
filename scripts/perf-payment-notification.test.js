@@ -120,3 +120,44 @@ test('waitFor trả về khi điều kiện đạt và báo lỗi khi quá hạn
     /Quá thời gian chờ.*thông báo của lượt/,
   );
 });
+
+const report = require('./perf/report');
+const oneRun = stats.summarizeRun(runInput);
+const groupsForReport = stats.aggregate([oneRun, { ...oneRun, consumers: 3 }]);
+
+test('toCsv ghi mỗi lượt một dòng theo thứ tự field của RunSummary', () => {
+  const csv = report.toCsv([oneRun, { ...oneRun, run: 2 }]);
+  const lines = csv.split('\n');
+  assert.equal(lines[0], Object.keys(oneRun).join(','));
+  assert.equal(lines.length, 4);
+  assert.equal(lines[3], '');
+  assert.match(lines[1], /^1,4,1,2026-11-17T00:00:00.000Z,1000,2,5,700,770,770,25,/);
+});
+
+test('barChartSvg vẽ một cột cho mỗi cấu hình và escape chữ', () => {
+  const svg = report.barChartSvg({
+    title: 'A & <B>', xLabel: 'Số event mỗi lượt', yLabel: 'ms', categories: ['100', '500', '1000'],
+    series: [1, 3].map(c => ({ name: `${c} consumer`, values: [1, 2, 3].map(v => ({ mean: v, min: v - 0.5, max: v + 0.5 })) })),
+  });
+  assert.ok(svg.startsWith('<svg'));
+  assert.equal(svg.match(/class="bar"/g).length, 6);
+  assert.ok(svg.includes('A &amp; &lt;B&gt;'));
+  assert.ok(svg.includes('1 consumer') && svg.includes('3 consumer'));
+  assert.ok(svg.includes('Số event mỗi lượt'));
+});
+
+test('chartsFor sinh hai biểu đồ đúng tiêu đề', () => {
+  const charts = report.chartsFor(groupsForReport);
+  assert.ok(charts.throughput.includes('Thông lượng đầu-cuối Payment → Notification'));
+  assert.ok(charts.latencyP95.includes('Độ trễ đầu-cuối p95'));
+});
+
+test('resultsMarkdown có hai bảng, một dòng mỗi cấu hình và hai biểu đồ', () => {
+  const md = report.resultsMarkdown(groupsForReport, { generatedAt: '2026-11-17T00:00:00Z', commit: 'abc1234', runsPerConfig: 1 });
+  assert.ok(md.includes('File này do script sinh tự động'));
+  assert.ok(md.includes('| Consumer | Số event | Số lượt | Thông lượng (event/s) | p50 (ms) | p95 (ms) | max (ms) |'));
+  assert.ok(md.includes('| Consumer | Số event | Payment (event/s) | Payment p50 / p95 (ms) | Chờ relay p50 / p95 (ms) | Notification p50 / p95 (ms) |'));
+  assert.ok(md.includes('| 1 | 4 | 1 | 5.0 (5.0–5.0) | 700 (700–700) | 770 (770–770) | 770 |'));
+  assert.ok(md.includes('![Thông lượng](throughput.svg)'));
+  assert.ok(md.includes('![Độ trễ p95](latency-p95.svg)'));
+});
