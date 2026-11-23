@@ -40,6 +40,10 @@ public class Payment {
     private BigDecimal amount;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "method", length = 10, nullable = false)
+    private PaymentMethod method;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20, nullable = false)
     private PaymentStatus status;
 
@@ -66,13 +70,14 @@ public class Payment {
     }
 
     public Payment(UUID tripId, UUID riderId, UUID driverId, BigDecimal amount, UUID idempotencyKey,
-            String correlationId) {
+            String correlationId, PaymentMethod method) {
         this.tripId = tripId;
         this.riderId = riderId;
         this.driverId = driverId;
         this.amount = amount;
         this.idempotencyKey = idempotencyKey;
         this.correlationId = correlationId;
+        this.method = method;
         this.status = PaymentStatus.PENDING;
     }
 
@@ -104,6 +109,10 @@ public class Payment {
 
     public BigDecimal getAmount() {
         return this.amount;
+    }
+
+    public PaymentMethod getMethod() {
+        return this.method;
     }
 
     public PaymentStatus getStatus() {

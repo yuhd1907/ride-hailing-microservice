@@ -10,6 +10,6 @@ import jakarta.validation.constraints.NotNull;
  * Payload của event payment.succeeded
  */
 public record PaymentSucceededPayload(UUID paymentId, @NotNull UUID tripId, @NotNull UUID riderId, UUID driverId,
-        @NotNull BigDecimal amount, Instant paidAt) {
+        @NotNull BigDecimal amount, Instant paidAt, String paymentMethod) {
 
 }

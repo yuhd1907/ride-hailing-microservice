@@ -192,8 +192,9 @@ Dữ liệu mẫu nằm trong [scripts/seed-data.sql](scripts/seed-data.sql), đ
 
 ## Saga thanh toán và thông báo
 
-Khi chuyến đi hoàn thành, Trip Service publish `trip.completed`. Payment Service thu tiền mô
-phỏng (vượt 2.000.000 VND thì thất bại), lưu payment cùng event kết quả vào bảng outbox rồi
+Khi chuyến đi hoàn thành, Trip Service publish `trip.completed`. Payment Service trừ tiền trong
+ngân hàng ảo của khách (khoá tiền từ lúc đặt chuyến; số dư không đủ thì thất bại) hoặc chờ tài xế
+xác nhận nếu trả tiền mặt, lưu payment cùng event kết quả vào bảng outbox rồi
 publish `payment.succeeded` hoặc `payment.failed`. Thanh toán thất bại thì Trip Service chạy bước
 bù trừ và publish `trip.compensated`. Notification Service nhận các event này và gửi thông báo
 cho khách và tài xế. Chi tiết luồng và cách xử lý lỗi ở [docs/saga.md](docs/saga.md).
@@ -206,7 +207,10 @@ cho khách và tài xế. Chi tiết luồng và cách xử lý lỗi ở [docs/
 | Publish tin cậy | Outbox `outbox_events` + publisher confirm |
 
 API cho người dùng (qua Gateway, cần Bearer token): `GET /payments/me`, `GET /payments/{id}`,
-`GET /payments/trips/{tripId}`, `GET /notifications/me`.
+`GET /payments/trips/{tripId}`, `GET /notifications/me`; ngân hàng ảo của khách
+`GET /payments/bank/me`, `GET /payments/bank/me/transactions`, `POST /payments/bank/me/topup`;
+tài xế xác nhận tiền mặt `POST /payments/trips/{tripId}/cash-confirm`. Số dư mẫu: khách mới
+500.000 VND, `passenger1` 1.000.000 VND, `passenger2` 30.000 VND.
 
 Giả lập event và chạy bộ kiểm thử giai đoạn 2 (ghi kết quả vào `docs/evidence/phase2/`):
 

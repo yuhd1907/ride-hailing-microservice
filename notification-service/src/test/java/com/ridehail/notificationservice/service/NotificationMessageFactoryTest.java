@@ -9,6 +9,7 @@ import com.ridehail.notificationservice.dto.NotificationDraft;
 import com.ridehail.notificationservice.dto.event.DriverAssignedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentFailedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentSucceededPayload;
+import com.ridehail.notificationservice.dto.event.TripAcceptedPayload;
 import com.ridehail.notificationservice.dto.event.TripCompensatedPayload;
 import com.ridehail.notificationservice.dto.event.TripFailedPayload;
 import com.ridehail.notificationservice.entity.RecipientRole;
@@ -53,7 +54,7 @@ class NotificationMessageFactoryTest {
     @Test
     void paymentSucceededShowsAmountInVnd() {
         List<NotificationDraft> drafts = this.factory.paymentSucceeded(new PaymentSucceededPayload(UUID.randomUUID(),
-                TRIP_ID, RIDER_ID, DRIVER_ID, new BigDecimal("125000.00"), Instant.now()));
+                TRIP_ID, RIDER_ID, DRIVER_ID, new BigDecimal("125000.00"), Instant.now(), null));
 
         assertEquals(1, drafts.size());
         assertEquals(NotificationMessageFactory.TYPE_PAYMENT_SUCCEEDED, drafts.get(0).type());
@@ -75,6 +76,44 @@ class NotificationMessageFactoryTest {
 
         assertEquals(1, drafts.size());
         assertEquals(RecipientRole.PASSENGER, drafts.get(0).recipientRole());
+    }
+
+    @Test
+    void tripAcceptedNotifiesPassenger() {
+        List<NotificationDraft> drafts = this.factory
+            .tripAccepted(new TripAcceptedPayload(TRIP_ID, RIDER_ID, DRIVER_ID, Instant.now()));
+
+        assertEquals(1, drafts.size());
+        assertEquals(RIDER_ID, drafts.get(0).recipientId());
+        assertEquals(RecipientRole.PASSENGER, drafts.get(0).recipientRole());
+        assertEquals(NotificationMessageFactory.TYPE_TRIP_ACCEPTED, drafts.get(0).type());
+        assertTrue(drafts.get(0).content().contains("Tài xế đã nhận chuyến 5b0e6f2a"), drafts.get(0).content());
+    }
+
+    @Test
+    void insufficientFundsFailureExplainsBalance() {
+        List<NotificationDraft> drafts = this.factory
+            .tripFailed(new TripFailedPayload(TRIP_ID, RIDER_ID, "INSUFFICIENT_FUNDS", Instant.now()));
+
+        assertEquals(1, drafts.size());
+        assertTrue(drafts.get(0).content().contains("số dư tài khoản ngân hàng không đủ"), drafts.get(0).content());
+    }
+
+    @Test
+    void paymentSucceededMentionsMethod() {
+        String bank = this.factory
+            .paymentSucceeded(new PaymentSucceededPayload(UUID.randomUUID(), TRIP_ID, RIDER_ID, DRIVER_ID,
+                    new BigDecimal("125000.00"), Instant.now(), "BANK"))
+            .get(0)
+            .content();
+        String cash = this.factory
+            .paymentSucceeded(new PaymentSucceededPayload(UUID.randomUUID(), TRIP_ID, RIDER_ID, DRIVER_ID,
+                    new BigDecimal("125000.00"), Instant.now(), "CASH"))
+            .get(0)
+            .content();
+
+        assertTrue(bank.contains("125.000 VND qua ngân hàng"), bank);
+        assertTrue(cash.contains("bằng tiền mặt"), cash);
     }
 
 }

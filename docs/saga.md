@@ -53,8 +53,10 @@ transaction**:
    (RabbitMQ giao lại cùng message).
 2. **Idempotency theo `tripId`**: `payments.idempotency_key = tripId` có ràng buộc `UNIQUE`.
    Nếu chuyến đã có payment thì không thu tiền lần hai, chỉ ghi nhận event là đã xử lý.
-3. **Gọi cổng thanh toán giả lập**: số tiền vượt `payment.simulation.max-amount` (mặc định
-   2.000.000 VND) thì thất bại với lý do `INSUFFICIENT_FUNDS`.
+3. **Trừ tiền**: chuyến trả bằng ngân hàng (`paymentMethod = BANK`, mặc định) trừ khoản đã khoá
+   lúc đặt chuyến trong ngân hàng ảo; không còn khoản khoá thì trừ trực tiếp, số dư không đủ thì
+   thất bại với lý do `INSUFFICIENT_FUNDS`. Chuyến tiền mặt (`CASH`) tạo payment `PENDING` và chờ
+   tài xế xác nhận (mục 3.1).
 4. **Ghi kết quả**: lưu payment (`SUCCESS`/`FAILED`), dòng `processed_events` và event kết quả
    (`payment.succeeded`/`payment.failed`) vào `outbox_events`.
 
@@ -63,6 +65,26 @@ RabbitMQ, chờ broker xác nhận (publisher confirm) rồi mới đánh dấu 
 
 Nhờ outbox, payment và event kết quả luôn cùng được lưu hoặc cùng bị hủy: không có trường hợp
 đã thu tiền mà không báo cho Trip Service, kể cả khi RabbitMQ chết đúng lúc đó.
+
+### 3.1 Ngân hàng ảo, khoá tiền khi đặt chuyến và tiền mặt
+
+Mỗi hành khách có một tài khoản ngân hàng ảo trong `payment_db` (`bank_accounts`, `fund_holds`,
+`bank_transactions`); khách mới có sẵn 500.000 VND, tài khoản mẫu `passenger1` 1.000.000 VND,
+`passenger2` 30.000 VND.
+
+- **Khi đặt chuyến** (`trip.requested`): Payment khoá đúng số tiền của chuyến. Dòng tài khoản được
+  khoá `FOR UPDATE` nên nhiều chuyến đặt đồng thời không vượt số dư khả dụng (số dư − tổng đang
+  khoá); `UNIQUE(trip_id)` chặn khoá hai lần. Kết quả phát qua outbox: `payment.authorized` hoặc
+  `payment.authorization_failed` (`INSUFFICIENT_FUNDS`).
+- **Chuyến hủy hoặc thất bại** (`trip.cancelled`, `trip.failed`): mở khoá. Event hủy tới trước
+  `trip.requested` thì chuyến được ghi vào `closed_trips` và không bị khoá về sau.
+- **Kết thúc chuyến**: trừ khoản đã khoá (mục 3). Khoản chưa trừ hay mở sau 2 giờ được tác vụ định
+  kỳ tự mở.
+- **Tiền mặt**: không khoá; tài xế gọi `POST /payments/trips/{tripId}/cash-confirm` sau khi nhận
+  tiền thì payment chuyển `SUCCESS` và phát `payment.succeeded`.
+
+API cho khách (qua Gateway): `GET /payments/bank/me`, `GET /payments/bank/me/transactions`,
+`POST /payments/bank/me/topup`. Hợp đồng event mới ở mục 2.8 của `docs/event-schema.md`.
 
 ## 4. Xử lý lỗi
 

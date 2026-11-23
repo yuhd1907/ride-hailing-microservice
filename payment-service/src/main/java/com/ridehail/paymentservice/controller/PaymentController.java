@@ -9,6 +9,7 @@ import com.ridehail.paymentservice.service.PaymentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -44,6 +45,17 @@ public class PaymentController {
     public ResponseEntity<PaymentResponse> paymentOfTrip(@PathVariable UUID tripId,
             @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId) {
         return ResponseEntity.ok(this.paymentService.getPaymentOfTrip(tripId, requireUser(userId)));
+    }
+
+    /**
+     * Tài xế của chuyến xác nhận đã nhận tiền mặt từ khách.
+     */
+    @PostMapping("/trips/{tripId}/cash-confirm")
+    public ResponseEntity<PaymentResponse> confirmCash(@PathVariable UUID tripId,
+            @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId,
+            @RequestHeader(value = BankController.ROLES_HEADER, required = false) String roles) {
+        UUID driverId = BankController.requireRole(userId, roles, "ROLE_DRIVER");
+        return ResponseEntity.ok(this.paymentService.confirmCash(tripId, driverId));
     }
 
     @GetMapping("/{paymentId}")
