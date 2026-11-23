@@ -15,8 +15,10 @@ public final class EventTypes {
 
     public static final String TRIP_COMPENSATED = "trip.compensated";
 
+    public static final String TRIP_FAILED = "trip.failed";
+
     public static final List<String> SUBSCRIBED = List.of(DRIVER_ASSIGNED, PAYMENT_SUCCEEDED, PAYMENT_FAILED,
-            TRIP_COMPENSATED);
+            TRIP_COMPENSATED, TRIP_FAILED);
 
     private EventTypes() {
     }

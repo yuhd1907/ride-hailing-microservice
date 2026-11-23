@@ -75,6 +75,24 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
     int releaseDriver(@Param("driverId") UUID driverId);
 
     /**
+     * REJECT: Tài xế từ chối chuyến đang được giữ cho mình. Chỉ nhả đúng lượt giữ của
+     * tripId đó, nên một yêu cầu từ chối đến muộn không thể nhả nhầm lượt giữ của chuyến
+     * khác
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = """
+            UPDATE drivers
+            SET status = 'AVAILABLE',
+                current_trip_id = NULL,
+                reservation_id = NULL,
+                version = version + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :driverId AND status = 'RESERVED' AND current_trip_id = :tripId
+            """, nativeQuery = true)
+    int rejectReservation(@Param("driverId") UUID driverId, @Param("tripId") UUID tripId);
+
+    /**
      * START TRIP: Chuyển tài xế từ RESERVED sang ON_TRIP
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -87,6 +105,21 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
             WHERE id = :driverId AND status = 'RESERVED'
             """, nativeQuery = true)
     int startTrip(@Param("driverId") UUID driverId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE drivers SET status='ON_TRIP', version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=:driverId AND status='RESERVED' AND current_trip_id=:tripId",
+            nativeQuery = true)
+    int startTripForTrip(@Param("driverId") UUID driverId, @Param("tripId") UUID tripId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE drivers SET status='AVAILABLE', current_trip_id=NULL, reservation_id=NULL, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=:driverId AND status='ON_TRIP' AND current_trip_id=:tripId",
+            nativeQuery = true)
+    int completeTripForTrip(@Param("driverId") UUID driverId, @Param("tripId") UUID tripId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE drivers SET status='AVAILABLE', current_trip_id=NULL, reservation_id=NULL, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=:driverId AND status IN ('RESERVED','ON_TRIP') AND current_trip_id=:tripId",
+            nativeQuery = true)
+    int releaseDriverForTrip(@Param("driverId") UUID driverId, @Param("tripId") UUID tripId);
 
     /**
      * COMPLETE TRIP: Hoàn thành chuyến, tài xế trở lại AVAILABLE

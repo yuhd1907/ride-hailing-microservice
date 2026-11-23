@@ -1,0 +1,36 @@
+✔ pricing: known Haversine distance, zero distance, symmetry, same distance and invalid coordinates (1.8969ms)
+✔ optimistic locking rejects a stale version before history or external side effects (1.9514ms)
+✔ Trip HTTP: Gateway identity, owner reads, driver action matrix, immutable fare and idempotent completion (233.047ms)
+✔ cancel before acceptance releases assigned reservation once; late assignment cannot revive cancellation (15.7857ms)
+✔ matching exhaustion fails and emits one passenger event despite duplicates (7.7245ms)
+✔ trip-service: envelope, AMQP metadata and broker confirmation (4.6741ms)
+✔ trip-service: malformed events DLQ immediately; transient errors retry three times (3.2032ms)
+✔ trip-service: durable queues, DLX, manual acknowledgements (1.2866ms)
+✔ matching-service: envelope, AMQP metadata and broker confirmation (2.5983ms)
+✔ matching-service: malformed events DLQ immediately; transient errors retry three times (1.3856ms)
+✔ matching-service: durable queues, DLX, manual acknowledgements (0.9575ms)
+✔ validation rejects missing fields, invalid UUIDs, amounts and timestamps (0.4701ms)
+✔ payment success confirms once, persists paymentId and history (1.7217ms)
+✔ compensation releases once and preserves correlation across duplicate events (1.0103ms)
+✔ release failure rolls back deduplication and permits retry (1.037ms)
+✔ late or mismatched payment cannot cancel a confirmed trip (1.0553ms)
+✔ service discovery uses UP instances, correlation and no release body (1.2282ms)
+✔ release treats state conflicts as complete and retries network/server failures (1.2289ms)
+✔ outbox is committed before publish and retains unconfirmed events (1.4742ms)
+✔ matching reserves with durable identity, emits once, and retries same reservation (1.7326ms)
+✔ HTTP create prices on server; complete ignores client fare and is idempotent (203.1593ms)
+✔ processed_events and business update share transaction; duplicate skips business logic (1.2092ms)
+✔ trip.driver_rejected requires pickup, driverId and rejectedAt (0.7871ms)
+✔ rejection re-matches with a different driver and ignores redelivery (1.4606ms)
+✔ rejection with no other driver fails once; redelivery cannot revive the trip (1.0264ms)
+✔ no available driver on initial request produces one terminal failure (0.9762ms)
+✔ HTTP reject: only the assigned driver, only while awaiting driver, one event (21.7092ms)
+✔ end to end: rejecting driver is freed at once and the trip goes to another driver (10.4944ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 351.7863

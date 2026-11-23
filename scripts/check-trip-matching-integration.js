@@ -61,12 +61,15 @@ async function user(role) {
 async function tripStatus(tripId, status) {
     return waitFor(`${tripId} => ${status}`, async () => {
         const { rows: [trip] } = await tripDb.query('SELECT * FROM trips WHERE "tripId"=$1', [tripId]);
-        return trip?.status === status && trip;
+        return (Array.isArray(status) ? status.includes(trip?.status) : trip?.status === status) && trip;
     });
 }
 async function pendingTrip(rider, driver, fare) {
     const correlationId = uuid();
-    const { data: trip } = await request(`${gateway}/trips`, { method: 'POST', token: rider.token, correlationId, body: { riderId: rider.userId, pickup, destination: { lat: pickup.lat + 0.01, lng: pickup.lng + 0.01 }, estimatedDistance: 3, fareAmount: fare } });
+    // A long route exercises payment failure without allowing client-set prices.
+    const destination = { lat: pickup.lat + (fare > 2000000 ? 3 : 0.01), lng: pickup.lng + 0.01 };
+    const { data: trip } = await request(`${gateway}/trips`, { method: 'POST', token: rider.token, correlationId, body: { pickup, destination } });
+    fare = Number(trip.fare);
     await tripStatus(trip.tripId, 'AWAITING_DRIVER');
     const { data: assigned } = await request(`${gateway}/drivers/${driver.userId}`, { token: rider.token });
     assert.equal(assigned.status, 'RESERVED');
@@ -78,7 +81,7 @@ async function pendingTrip(rider, driver, fare) {
     await publish(requested.envelope);
     await request(`${gateway}/trips/${trip.tripId}/start`, { method: 'POST', token: driver.token });
     await request(`${gateway}/trips/${trip.tripId}/complete`, { method: 'POST', token: driver.token, body: { fareAmount: fare } });
-    await tripStatus(trip.tripId, 'PAYMENT_PENDING');
+    await tripStatus(trip.tripId, ['PAYMENT_PENDING', 'CONFIRMED', 'CANCELLED']);
     const completed = await waitFor('trip.completed envelope', () => observed.find(item => item.event.eventType === 'trip.completed' && item.event.payload?.tripId === trip.tripId));
     assert.equal(completed.event.correlationId, correlationId);
     assert.equal(completed.event.payload.riderId, rider.userId);

@@ -11,6 +11,8 @@ const events = require('./events');
 const matching = require('./matching');
 const errorDetails = error => error?.message || error?.code || error?.stack || String(error);
 rabbitmq.consume('trip.requested', matching.handle);
+rabbitmq.consume('trip.driver_rejected', matching.rejected);
+rabbitmq.consume('trip.cancelled', matching.cancelled);
 let outboxTimer;
 const port = Number(process.env.MATCHING_SERVICE_PORT || process.env.PORT || 8084);
 const log = (level, correlationId, method, url, message) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), level, service: identity.service, instanceId: identity.instanceId, correlationId, tripId: null, eventId: null, method, url, message }));

@@ -12,6 +12,7 @@ import com.ridehail.notificationservice.dto.event.DriverAssignedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentFailedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentSucceededPayload;
 import com.ridehail.notificationservice.dto.event.TripCompensatedPayload;
+import com.ridehail.notificationservice.dto.event.TripFailedPayload;
 import com.ridehail.notificationservice.entity.RecipientRole;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +29,8 @@ public class NotificationMessageFactory {
     public static final String TYPE_PAYMENT_FAILED = "PAYMENT_FAILED";
 
     public static final String TYPE_TRIP_COMPENSATED = "TRIP_COMPENSATED";
+
+    public static final String TYPE_TRIP_FAILED = "TRIP_FAILED";
 
     private static final Locale VIETNAMESE = Locale.forLanguageTag("vi-VN");
 
@@ -63,6 +66,11 @@ public class NotificationMessageFactory {
                     + trip + " đã bị hủy do khách thanh toán không thành công. Bạn đã sẵn sàng nhận chuyến mới."));
         }
         return drafts;
+    }
+
+    public List<NotificationDraft> tripFailed(TripFailedPayload payload) {
+        return List.of(new NotificationDraft(payload.riderId(), RecipientRole.PASSENGER, TYPE_TRIP_FAILED, "Chuyến "
+                + shortId(payload.tripId()) + " thất bại vì không còn tài xế khả dụng. Vui lòng đặt lại chuyến."));
     }
 
     static String formatVnd(BigDecimal amount) {

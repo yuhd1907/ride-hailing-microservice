@@ -1,0 +1,11 @@
+Integration run 2026-11-17T16:15:14.564Z; real PostgreSQL/RabbitMQ/Eureka/Driver/Payment/Notification; faults=false
+PASS 1: Driver load balancing: driver-service-instance-2, driver-service-instance-1
+PASS 2: Gateway blocks /internal
+PASS 3: Gateway -> Matching -> reserve -> start -> complete; tripId=e2f459fa-f5ad-4fa3-9443-a9e06d81212f; correlationId=0f0b276f-d758-4508-8fe0-7eede08341a7
+PASS 4: Payment Service payment.succeeded -> CONFIRMED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 5: Notification Service sent PAYMENT_SUCCEEDED for tripId=e2f459fa-f5ad-4fa3-9443-a9e06d81212f
+PASS 6: Gateway -> Matching -> reserve -> start -> complete; tripId=690e0972-c99a-4b1e-b019-c0fc7979bdbb; correlationId=4a15e4fc-706e-4414-a2e4-8aceb838166d
+PASS 7: Payment Service payment.failed -> CANCELLED, driver AVAILABLE; duplicate eventId and business result are idempotent
+PASS 8: Notification Service sent PAYMENT_FAILED + TRIP_COMPENSATED for tripId=690e0972-c99a-4b1e-b019-c0fc7979bdbb
+PASS 9: Malformed event is dead-lettered
+RESULT: 9 integration checks passed with the real Payment/Notification Saga.

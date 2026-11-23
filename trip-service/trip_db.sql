@@ -16,6 +16,7 @@ CREATE TABLE trips (
     "tripId" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "passengerId" UUID NOT NULL,
     "driverId" UUID,
+    "rejectedDriverIds" UUID[] NOT NULL DEFAULT ARRAY[]::UUID[],
     pickup JSONB NOT NULL,
     destination JSONB NOT NULL,
     "estimatedDistance" NUMERIC(10, 2) NOT NULL CHECK ("estimatedDistance" >= 0),

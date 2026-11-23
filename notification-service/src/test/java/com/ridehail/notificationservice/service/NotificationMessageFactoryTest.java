@@ -10,6 +10,7 @@ import com.ridehail.notificationservice.dto.event.DriverAssignedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentFailedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentSucceededPayload;
 import com.ridehail.notificationservice.dto.event.TripCompensatedPayload;
+import com.ridehail.notificationservice.dto.event.TripFailedPayload;
 import com.ridehail.notificationservice.entity.RecipientRole;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,17 @@ class NotificationMessageFactoryTest {
     private static final UUID DRIVER_ID = UUID.fromString("fd699acc-6544-44a9-9634-5396060c61b8");
 
     private final NotificationMessageFactory factory = new NotificationMessageFactory();
+
+    @Test
+    void noAvailableDriversNotifiesOnlyThePassenger() {
+        List<NotificationDraft> drafts = this.factory
+            .tripFailed(new TripFailedPayload(TRIP_ID, RIDER_ID, "NO_AVAILABLE_DRIVERS", Instant.now()));
+        assertEquals(1, drafts.size());
+        assertEquals(RIDER_ID, drafts.get(0).recipientId());
+        assertEquals(RecipientRole.PASSENGER, drafts.get(0).recipientRole());
+        assertEquals("TRIP_FAILED", drafts.get(0).type());
+        assertTrue(drafts.get(0).content().contains("không còn tài xế"));
+    }
 
     @Test
     void driverAssignedNotifiesPassengerAndDriver() {
