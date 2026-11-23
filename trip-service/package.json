@@ -6,13 +6,17 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test ../scripts/trip-matching.test.js ../scripts/trip-matching-phase3.test.js"
+    "test": "node --test ../scripts/trip-matching.test.js ../scripts/trip-matching-phase3.test.js ../scripts/dynamic-pricing.test.js"
   },
   "dependencies": {
     "amqplib": "^0.10.8",
     "dotenv": "^16.4.7",
     "eureka-js-client": "^4.5.0",
     "express": "^5.1.0",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "redis": "^5.12.4"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17"
   }
 }

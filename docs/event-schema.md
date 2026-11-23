@@ -228,7 +228,9 @@ Trip Service đã hoàn tác chuyến sau khi thanh toán thất bại. Notifica
 
 Trip phát cho Matching sau khi tạo chuyến. Payload bắt buộc: `tripId`, `riderId`
 (UUID), `pickup` (`lat`, `lng` dạng number hợp lệ). Có thể kèm `destination`
-và `fareAmount`. Queue `matching-service.trip.requested`.
+và `fareAmount`. Từ dynamic pricing, producer gửi `vehicleType` (`MOTORCYCLE`,
+`CAR_4_SEAT`, `CAR_7_SEAT`); Matching chỉ chọn tài xế cùng loại xe. Consumer chấp nhận event cũ
+thiếu trường này để tương thích. Queue `matching-service.trip.requested`.
 Trip consume thêm queue `trip-service.matching.driver_assigned` để gán tài xế.
 
 ### 2.7 `trip.driver_rejected`
@@ -244,6 +246,7 @@ lại `matching.driver_assigned`. Queue `matching-service.trip.driver_rejected`.
 | `riderId` | UUID | ✔ | |
 | `driverId` | UUID | ✔ | tài xế vừa từ chối |
 | `pickup` | object `{lat, lng}` | ✔ | điểm đón, dùng để tìm lại tài xế gần |
+| `vehicleType` | `MOTORCYCLE` / `CAR_4_SEAT` / `CAR_7_SEAT` | khi có giá động | giữ loại xe khi ghép lại; tương thích event cũ thiếu trường này |
 | `rejectedAt` | ISO-8601 UTC | ✔ | |
 
 ```json

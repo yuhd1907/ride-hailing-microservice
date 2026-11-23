@@ -354,6 +354,9 @@ services:
       - "${TRIP_SERVICE_PORT:-8083}:8083"
     environment:
       TRIP_SERVICE_PORT: 8083
+      REDIS_URL: redis://redis:6379
+      GOOGLE_ROUTES_API_KEY: ${GOOGLE_ROUTES_API_KEY:-}
+      GOOGLE_WEATHER_API_KEY: ${GOOGLE_WEATHER_API_KEY:-}
       DATABASE_URL: postgres://${TRIP_DB_USER:-postgres}:${TRIP_DB_PASSWORD:-postgres_password}@trip_postgres:5432/${TRIP_DB_NAME:-trip_db}
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
       EUREKA_HOST: eureka-server
@@ -363,6 +366,8 @@ services:
       eureka_server:
         condition: service_healthy
       trip_postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy

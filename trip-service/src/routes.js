@@ -5,7 +5,7 @@ const events = require('./events');
 const { history } = require('./saga');
 const { uuid } = require('./validation');
 const { actor, assignedDriver, fail } = require('./auth');
-const { estimate } = require('./fare');
+const pricing = require('./pricing');
 const driver = require('./service-client');
 
 async function findTrip(client, id) {
@@ -23,20 +23,25 @@ function correlation(req, res, trip) {
 
 module.exports = app => {
   app.post('/trips/estimate', async (req, res) => {
-    actor(req, 'ROLE_PASSENGER');
-    res.json(estimate(req.body?.pickup, req.body?.destination));
+    const riderId = actor(req, 'ROLE_PASSENGER');
+    res.json(await pricing.quote(riderId, req.body, req.correlationId));
   });
 
   app.post('/trips', async (req, res) => {
     const riderId = actor(req, 'ROLE_PASSENGER');
     if (req.body?.riderId !== undefined && req.body.riderId?.toLowerCase?.() !== riderId) fail(403, 'Cannot book for another passenger');
-    const { pickup, destination } = req.body || {};
-    const { estimatedDistance, fareAmount } = estimate(pickup, destination);
+    // Legacy clients may book directly; server issues a fresh quote for that request.
+    // Clients displaying an estimate must send quoteId to lock the displayed fare.
+    const quoteId = req.body?.quoteId !== undefined ? req.body.quoteId : (await pricing.quote(riderId, req.body, req.correlationId)).quoteId;
     const tripId = crypto.randomUUID();
     const trip = await events.transaction(async client => {
-      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId]);
+      const locked = await pricing.lockQuote(client, quoteId, riderId, req.body);
+      if (locked.tripId) return findTrip(client, locked.tripId);
+      const { pickup, destination, estimatedDistance, estimatedDuration, fareAmount, vehicleType } = locked.snapshot;
+      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId", "vehicleType", "quoteId", "estimatedDuration", "pricingSnapshot") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId, vehicleType, quoteId, estimatedDuration, locked.snapshot]);
+      await client.query('UPDATE fare_quotes SET trip_id=$2 WHERE quote_id=$1', [quoteId, tripId]);
       await client.query('INSERT INTO trip_status_history ("tripId", new_status, reason) VALUES ($1,$2,$3)', [tripId, 'REQUESTED', 'trip requested']);
-      await events.enqueue(client, 'trip.requested', { tripId, riderId, pickup, destination, estimatedDistance, fareAmount }, req.correlationId);
+      await events.enqueue(client, 'trip.requested', { tripId, riderId, pickup, destination, estimatedDistance, fareAmount, vehicleType }, req.correlationId);
       return row;
     });
     res.status(201).json(trip);
@@ -67,7 +72,7 @@ module.exports = app => {
         if ([400, 409].includes(error.status)) fail(409, 'Driver can no longer reject this trip');
         if (error.status !== 404) throw error;
       }
-      await events.enqueue(client, 'trip.driver_rejected', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, rejectedAt: new Date().toISOString() }, correlationId);
+      await events.enqueue(client, 'trip.driver_rejected', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, vehicleType: trip.vehicleType || 'MOTORCYCLE', rejectedAt: new Date().toISOString() }, correlationId);
       return updated;
     });
     res.json(result);

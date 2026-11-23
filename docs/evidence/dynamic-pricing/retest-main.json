@@ -1,0 +1,87 @@
+{
+  "checkedAtUtc": "2026-11-23T08:28:37.092Z",
+  "head": "245a6ddca091a5962c563e1ef2a0b61f911f2ea5",
+  "main": "245a6ddca091a5962c563e1ef2a0b61f911f2ea5",
+  "originMain": "245a6ddca091a5962c563e1ef2a0b61f911f2ea5",
+  "fetchHead": "245a6ddca091a5962c563e1ef2a0b61f911f2ea5",
+  "unresolvedConflicts": [],
+  "sourceChangesNeeded": false,
+  "nodeTests": {
+    "passed": 37,
+    "failed": 0
+  },
+  "javaCheck": {
+    "command": "gradlew.bat -g .verification/gradle-home check --offline --no-daemon",
+    "result": "BUILD SUCCESSFUL",
+    "includesValidUpToDateResults": true,
+    "modules": [
+      {
+        "module": "api-gateway",
+        "tests": 30,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "driver-service",
+        "tests": 41,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "notification-service",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "payment-service",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "user-service",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "dynamicPricing": {
+    "status": "PASS",
+    "checks": 10,
+    "startedAt": "2026-11-23T08:23:47.465Z",
+    "finishedAt": "2026-11-23T08:26:15.785Z"
+  },
+  "tripMatching": "RESULT: 9 integration checks PASS; real PostgreSQL, RabbitMQ and application services; runtime=Docker Compose.",
+  "paymentNotification": "\u0000",
+  "sourceHashes": {
+    "tripFiles": 19,
+    "matchingFiles": 11,
+    "allMatch": true
+  },
+  "containers": [
+    "api_gateway healthy",
+    "driver_postgres healthy",
+    "driver_service_1 healthy",
+    "driver_service_2 healthy",
+    "eureka_server healthy",
+    "matching_postgres healthy",
+    "matching_service healthy",
+    "notification_postgres healthy",
+    "notification_service healthy",
+    "payment_postgres healthy",
+    "payment_service healthy",
+    "rabbitmq healthy",
+    "redis healthy",
+    "trip_postgres healthy",
+    "trip_service healthy",
+    "user_postgres healthy",
+    "user_service healthy"
+  ]
+}

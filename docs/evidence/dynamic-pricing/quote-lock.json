@@ -1,0 +1,12 @@
+{
+  "startedAt": "2026-11-23T08:16:24.596Z",
+  "runtime": "Docker Compose; real HTTP, PostgreSQL, Redis, RabbitMQ and Java services",
+  "checks": [
+    {
+      "name": "Quote expiry is checked after PostgreSQL row-lock acquisition",
+      "status": "PASS"
+    }
+  ],
+  "status": "PASS",
+  "finishedAt": "2026-11-23T08:16:32.488Z"
+}

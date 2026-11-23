@@ -1,0 +1,8 @@
+{
+  "startedAt": "2026-11-23T08:14:39.639Z",
+  "runtime": "Docker Compose; real HTTP, PostgreSQL, Redis, RabbitMQ and Java services",
+  "checks": [],
+  "status": "FAIL",
+  "error": "AssertionError [ERR_ASSERTION]: A quote that expires while waiting for a row lock must not create a trip\n\n201 !== 409\n\n    at quoteLockExpiry (D:\\HTPT\\ride-hailing-microservice\\scripts\\check-dynamic-pricing-integration.js:110:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async main (D:\\HTPT\\ride-hailing-microservice\\scripts\\check-dynamic-pricing-integration.js:137:5)",
+  "finishedAt": "2026-11-23T08:14:43.567Z"
+}

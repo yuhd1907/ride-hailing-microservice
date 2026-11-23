@@ -21,19 +21,16 @@ một tài xế cho hai chuyến. Tài xế quyết định nhận hoặc từ c
 
 ### Quy tắc giá cước
 
-Phiên bản `haversine-v1` dùng bán kính Trái Đất 6.371 km và công thức Haversine
-để ước tính khoảng cách đường chim bay giữa hai tọa độ. Đây là giá mô phỏng;
-không dùng bản đồ đường bộ, giao thông hay phụ phí biến động.
+Phiên bản `dynamic-v1` thay `haversine-v1`: giá theo loại xe, km, phút, khung giờ
+Việt Nam, cung–cầu, cuối tuần/ngày lễ, thời tiết và khu vực. Mức giá và hệ số
+lưu trong `fare_rates`, `pricing_rules`, `pricing_holidays`, `pricing_zones`.
 
-1. Làm tròn khoảng cách đến `0,01 km`, lưu trong `estimatedDistance`.
-2. Cước cơ bản: **12.000 VND**; cước quãng đường: **10.000 VND/km**.
-3. Làm tròn tổng cước lên bội số **1.000 VND**.
-
-`fare = ceil((12000 + round(estimatedDistance × 10000)) / 1000) × 1000`.
-Khoảng cách 0 km có giá 12.000 VND. Với cùng khoảng cách đã làm tròn, giá luôn
-giống nhau. Ví dụ `(0,0) → (1,0)` dài 111,19 km, giá 1.124.000 VND.
-Giá được chốt lúc tạo chuyến; hoàn thành chuyến không sửa giá. Payment thu
+`POST /trips/estimate` cấp `quoteId` hiệu lực mặc định 120 giây. Gửi `quoteId`
+khi tạo chuyến để khóa đúng giá đã xem. Giá và breakdown được lưu trong
+`trips.pricingSnapshot`; hoàn thành chuyến không sửa giá. Payment thu
 đúng `trip.completed.payload.fareAmount`, lấy từ `trips.fare` đã lưu.
+Xem [thiết kế, cấu hình và ví dụ giá động](dynamic-pricing.md) để biết công thức,
+cache surge và chế độ khi chưa có Google API key.
 
 ## 8. Thiết kế thành phần và giao thức
 
@@ -48,7 +45,7 @@ Gateway chặn truy cập `/internal/**` từ client.
 
 | Method và đường dẫn | Danh tính/quyền | Kết quả |
 | --- | --- | --- |
-| `POST /trips/estimate` | Hành khách | `{estimatedDistance, fareAmount, currency, pricingVersion}` |
+| `POST /trips/estimate` | Hành khách | `{quoteId, expiresAt, estimatedDistance, estimatedDuration, fareAmount, breakdown, ...}` |
 | `POST /trips` | Hành khách | `201`, chuyến `REQUESTED`, lưu giá server và event |
 | `GET /trips/{id}` | Chủ chuyến hoặc tài xế hiện được giao | Chi tiết chuyến, giá và version |
 | `POST /trips/{id}/accept` | Tài xế hiện được giao | `AWAITING_DRIVER → IN_PROGRESS` |
@@ -59,14 +56,19 @@ Gateway chặn truy cập `/internal/**` từ client.
 | `GET /payments/trips/{id}` | Theo quyền Payment hiện có | Số tiền và kết quả thanh toán |
 | `GET /notifications/me` | Người dùng đăng nhập | Thông báo của chính người dùng |
 
-Body của estimate và tạo chuyến:
+Body của estimate (vẫn chấp nhận để tạo chuyến trực tiếp cho client cũ):
 
 ```json
 {
   "pickup": { "lat": 10.77, "lng": 106.70 },
-  "destination": { "lat": 10.78, "lng": 106.71 }
+  "destination": { "lat": 10.78, "lng": 106.71 },
+  "vehicleType": "MOTORCYCLE"
 }
 ```
+
+Sau khi hiển thị báo giá, tạo chuyến bằng `{"quoteId":"<UUID từ estimate>"}`.
+Báo giá hết hạn hoặc đổi tọa độ/loại xe trả `409`; yêu cầu báo giá mới.
+Gọi lại cùng `quoteId` của cùng khách trả cùng chuyến, không tạo thêm event.
 
 Không cần `riderId`, `fareAmount` hoặc `estimatedDistance`. Để tương thích client
 cũ, `riderId` chỉ được chấp nhận khi khớp người đăng nhập; gửi ID người khác bị

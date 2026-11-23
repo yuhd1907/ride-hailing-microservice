@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { estimate } = require('../trip-service/src/fare');
+const { distanceKm } = require('../trip-service/src/fare');
 const uuid = () => crypto.randomUUID();
 
 function load(file, mocks) {
@@ -16,17 +16,16 @@ function load(file, mocks) {
   return mod.exports;
 }
 
-test('pricing: known Haversine distance, zero distance, symmetry, same distance and invalid coordinates', () => {
-  const quote = estimate({ lat: 0, lng: 0 }, { lat: 1, lng: 0 });
-  assert.equal(quote.estimatedDistance, 111.19);
-  assert.equal(quote.fareAmount, 1124000);
-  assert.deepEqual(quote, estimate({ lat: 20, lng: 0 }, { lat: 21, lng: 0 }));
-  assert.deepEqual(quote, estimate({ lat: 1, lng: 0 }, { lat: 0, lng: 0 }));
-  assert.equal(estimate({ lat: 0, lng: 0 }, { lat: 0, lng: 0 }).fareAmount, 12000);
+test('distance fallback: Haversine distance, zero distance, symmetry and invalid coordinates', () => {
+  const distance = distanceKm({ lat: 0, lng: 0 }, { lat: 1, lng: 0 });
+  assert.equal(Math.round(distance * 100) / 100, 111.19);
+  assert.ok(Math.abs(distance - distanceKm({ lat: 20, lng: 0 }, { lat: 21, lng: 0 })) < 1e-10);
+  assert.equal(distance, distanceKm({ lat: 1, lng: 0 }, { lat: 0, lng: 0 }));
+  assert.equal(distanceKm({ lat: 0, lng: 0 }, { lat: 0, lng: 0 }), 0);
   for (const point of [null, {}, { lat: 91, lng: 0 }, { lat: 0, lng: -181 }, { lat: '1', lng: 2 }, { lat: NaN, lng: 0 }]) {
-    assert.throws(() => estimate(point, { lat: 0, lng: 0 }), { status: 400 });
+    assert.throws(() => distanceKm(point, { lat: 0, lng: 0 }), { status: 400 });
   }
-  assert.ok(Number.isFinite(estimate({ lat: 90, lng: 180 }, { lat: -90, lng: -180 }).fareAmount));
+  assert.ok(Number.isFinite(distanceKm({ lat: 90, lng: 180 }, { lat: -90, lng: -180 })));
 });
 
 test('optimistic locking rejects a stale version before history or external side effects', async () => {
@@ -69,7 +68,7 @@ async function harness() {
   };
   const driver = { request: async (...args) => calls.push(args) };
   const saga = load('saga.js', { './events': events, './service-client': driver, './logger': () => {} });
-  const routes = load('routes.js', { './db': client, './events': events, './saga': saga, './service-client': driver });
+  const routes = load('routes.js', { './db': client, './events': events, './saga': saga, './service-client': driver, './pricing': require('./helpers/pricing-stub')() });
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => { req.correlationId = uuid(); next(); });

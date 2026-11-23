@@ -300,8 +300,10 @@ async function scenario3() {
   const quote = await apiOk('/trips/estimate', { method: 'POST', actor: ctx.riderA, body: { pickup: PICKUP, destination: NEAR } });
   field('Quãng đường', `${quote.estimatedDistance} km (${quote.pricingVersion})`);
   field('Giá', vnd(quote.fareAmount));
+  field('Giữ giá đến', quote.expiresAt);
+  for (const reason of quote.breakdown.reasons) field(reason.label, reason.multiplier ? `×${String(reason.multiplier).replace('.', ',')}` : vnd(reason.amount));
   act('Khách đặt chuyến: POST /trips');
-  ctx.trip1 = await bookTrip(ctx.riderA, NEAR);
+  ctx.trip1 = await apiOk('/trips', { method: 'POST', actor: ctx.riderA, body: { quoteId: quote.quoteId } });
   field('Mã chuyến', ctx.trip1.tripId);
   field('Correlation ID', ctx.trip1.sagaId);
   expect(ctx.trip1.status === 'REQUESTED', 'Chuyến được tạo với trạng thái REQUESTED', `Trạng thái chuyến là ${ctx.trip1.status}`);
