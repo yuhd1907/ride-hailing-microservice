@@ -81,6 +81,12 @@ ack sau commit. Trip/Matching dùng confirm channel và outbox để gửi sau c
 | `payment.failed` | Payment Service | Trip Service (TV2), Notification Service |
 | `trip.compensated` | Trip Service (TV2) | Notification Service |
 | `trip.driver_rejected` | Trip Service (TV2) | Matching Service (TV2) |
+| `payment.authorized` *(đề xuất, mục 2.8)* | Payment Service | Trip Service (TV2) |
+| `payment.authorization_failed` *(đề xuất, mục 2.8)* | Payment Service | Trip Service (TV2) |
+| `trip.matching_requested` *(đề xuất, mục 2.8)* | Trip Service (TV2) | Matching Service (TV2) |
+| `trip.accepted` *(đề xuất, mục 2.8)* | Trip Service (TV2) | Notification Service |
+
+Payment Service đã nghe thêm `trip.requested`, `trip.cancelled`, `trip.failed` (mục 2.8).
 
 ### 2.1 `trip.completed`
 
@@ -289,6 +295,46 @@ Trong phase3, `trip.requested` chứa giá/quãng đường **do Trip tính** t�
 không được quyết định hoặc sửa số tiền Payment thu.
 Chi tiết REST, vòng đời, outbox và nhất quán: [báo cáo phase3](phase3-trip-matching.md).
 
+### 2.8 Ngân hàng ảo và thanh toán tiền mặt
+
+> **Trạng thái: đề xuất của thành viên 3 (Payment/Notification) ngày 2026-11-23, chờ thành viên 2
+> (Trip/Matching) đồng ý.** Phía Payment/Notification đã triển khai và **tương thích ngược**: khi Trip
+> chưa cập nhật, hệ thống chạy như cũ (xem cuối mục).
+
+Luồng mới: Trip lưu chuyến `REQUESTED` và phát `trip.requested` → Payment khoá tiền (BANK) hoặc bỏ
+qua (CASH) rồi phát `payment.authorized` / `payment.authorization_failed` → Trip chuyển `MATCHING`
+và phát `trip.matching_requested` cho Matching, hoặc chuyển `FAILED` và phát `trip.failed`
+`reason = INSUFFICIENT_FUNDS`. Kết thúc chuyến: BANK thì Payment trừ đúng số đã khoá; CASH thì
+Payment tạo payment `PENDING`, tài xế gọi `POST /payments/trips/{tripId}/cash-confirm` mới phát
+`payment.succeeded`.
+
+Thay đổi trên event đã có:
+
+| Event | Thay đổi |
+| --- | --- |
+| `trip.requested` | Consumer chuyển từ Matching sang **Payment**. Thêm tùy chọn `paymentMethod` (`BANK` | `CASH`, vắng mặt = `BANK`), `voucherCode`, `originalFare`, `discountAmount`; `fareAmount` là số tiền khách phải trả (sau voucher) |
+| `trip.completed` | Thêm tùy chọn `paymentMethod` (vắng mặt = `BANK`) |
+| `trip.cancelled`, `trip.failed` | Thêm consumer **Payment** (mở khoá tiền); `trip.failed.reason` nhận thêm `INSUFFICIENT_FUNDS` |
+| `payment.succeeded` | Thêm `paymentMethod` (`BANK` | `CASH`) |
+
+Event mới:
+
+| Event | Payload |
+| --- | --- |
+| `payment.authorized` | `tripId`, `riderId`, `amount` (VND), `paymentMethod`, `holdId` (UUID, null với CASH), `authorizedAt` |
+| `payment.authorization_failed` | `tripId`, `riderId`, `amount`, `reason` (`INSUFFICIENT_FUNDS`), `failedAt` |
+| `trip.matching_requested` | `tripId`, `riderId`, `pickup`, `destination`, `vehicleType`, `fareAmount`, `requestedAt` |
+| `trip.accepted` | `tripId`, `riderId`, `driverId`, `acceptedAt` — phát đúng một lần khi `AWAITING_DRIVER` → `IN_PROGRESS` |
+
+Payment không phát `payment.authorized` lần hai cho cùng chuyến (khoản khoá theo `tripId` là duy
+nhất). `trip.cancelled` / `trip.failed` tới Payment trước `trip.requested` thì Payment ghi nhận chuyến
+đã đóng và không khoá tiền về sau. Khoản khoá chưa trừ hay mở sau 2 giờ được tự mở.
+
+Tương thích ngược khi Trip/Matching chưa cập nhật: `payment.authorized` /
+`payment.authorization_failed` chưa có queue nhận nên exchange bỏ qua; Matching vẫn nghe
+`trip.requested` như cũ. Chuyến thiếu tiền vẫn được ghép; khi `trip.completed` tới, Payment không có
+khoản khoá thì trừ trực tiếp, thiếu tiền thì phát `payment.failed` và luồng bù trừ hiện có chạy.
+
 ## 3. Quyết định hợp đồng TV2 (2026-11-10)
 
 1. Đồng ý exchange `rideflow.events` topic durable; routing key bằng eventType.
@@ -313,3 +359,4 @@ khi vắng mặt Trip lấy tài xế đã lưu trong DB, khi có thì kiểm tr
 | 2026-11-23 | TV2 Trip/Matching | Thêm `vehicleType` tùy chọn vào `trip.requested`, `trip.driver_rejected` |
 | 2026-11-16 | TV1 Driver/Gateway (phối hợp TV2) | Thêm `trip.driver_rejected` (mục 2.7) cho luồng tài xế từ chối chuyến; không đổi field của event cũ |
 | 2026-11-17 | TV2 Trip/Matching | Phase3: giá server, accept/cancel, `matching.failed`, `trip.failed`, `trip.cancelled`, reservationId tùy chọn |
+| 2026-11-23 | TV3 Payment/Notification | Đề xuất mục 2.8: ngân hàng ảo, `payment.authorized`/`authorization_failed`, `trip.matching_requested`, `trip.accepted`, `paymentMethod`; chờ TV2 đồng ý |
