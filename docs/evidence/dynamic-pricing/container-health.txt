@@ -1,0 +1,17 @@
+﻿api_gateway healthy
+driver_postgres healthy
+driver_service_1 healthy
+driver_service_2 healthy
+eureka_server healthy
+matching_postgres healthy
+matching_service healthy
+notification_postgres healthy
+notification_service healthy
+payment_postgres healthy
+payment_service healthy
+rabbitmq healthy
+redis healthy
+trip_postgres healthy
+trip_service healthy
+user_postgres healthy
+user_service healthy

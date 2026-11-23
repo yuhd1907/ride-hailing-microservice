@@ -5,12 +5,14 @@ const events = require('./events');
 const { history } = require('./saga');
 const { uuid } = require('./validation');
 const { identity, actor, assignedDriver, canRead, fail } = require('./auth');
-const { estimate, point } = require('./fare');
+const { point, VEHICLES } = require('./fare');
+const pricing = require('./pricing');
 const driver = require('./service-client');
-const rates = require('./rates')(db);
 
 const TRIP_STATUSES = ['REQUESTED', 'MATCHING', 'AWAITING_DRIVER', 'IN_PROGRESS', 'PAYMENT_PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'FAILED'];
-const DEFAULT_VEHICLE = 'MOTORCYCLE';
+
+// Quote chỉ lưu tọa độ và địa chỉ đã làm sạch; chuyến lấy pickup/destination từ quote.
+const quoteInput = (body, vehicleType = body?.vehicleType ?? undefined) => ({ pickup: point(body?.pickup), destination: point(body?.destination), vehicleType });
 
 async function findTrip(client, id) {
   if (!uuid(id)) fail(400, 'Invalid tripId');
@@ -26,16 +28,20 @@ function correlation(req, res, trip) {
 }
 
 module.exports = app => {
-  // Báo giá mọi loại xe (options); fareAmount và vehicleType là của loại xe được chọn (mặc định loại đầu bảng).
+  // Có vehicleType: một quote, client gửi lại quoteId khi đặt để khóa giá.
+  // Không có (web chọn xe sau): quote cho mọi loại xe trong options; phần ngoài là quote xe máy.
   app.post('/trips/estimate', async (req, res) => {
-    actor(req, 'ROLE_PASSENGER');
-    res.json(estimate(req.body?.pickup, req.body?.destination, await rates.list(), req.body?.vehicleType ?? undefined));
+    const riderId = actor(req, 'ROLE_PASSENGER');
+    if (req.body?.vehicleType != null) return res.json(await pricing.quote(riderId, quoteInput(req.body), req.correlationId));
+    const options = await Promise.all(VEHICLES.map(async ({ vehicleType, displayName, seats }) =>
+      ({ ...await pricing.quote(riderId, quoteInput(req.body, vehicleType), req.correlationId), displayName, seats })));
+    res.json({ ...options[0], options });
   });
 
   // Các route cố định phải đứng trước /trips/:id, nếu không "me" bị hiểu là mã chuyến.
   app.get('/trips/fare-rates', async (req, res) => {
     identity(req);
-    res.json(await rates.list());
+    res.json(await pricing.rates());
   });
 
   // Hành khách: chuyến mình đặt. Tài xế: chuyến được giao cho mình. Mới nhất trước, tối đa 100.
@@ -58,13 +64,16 @@ module.exports = app => {
   app.post('/trips', async (req, res) => {
     const riderId = actor(req, 'ROLE_PASSENGER');
     if (req.body?.riderId !== undefined && req.body.riderId?.toLowerCase?.() !== riderId) fail(403, 'Cannot book for another passenger');
-    const pickup = point(req.body?.pickup);
-    const destination = point(req.body?.destination);
-    const vehicleType = req.body?.vehicleType ?? DEFAULT_VEHICLE;
-    const { estimatedDistance, fareAmount } = estimate(pickup, destination, await rates.list(), vehicleType);
+    // Legacy clients may book directly; server issues a fresh quote for that request.
+    // Clients displaying an estimate must send quoteId to lock the displayed fare.
+    const quoteId = req.body?.quoteId !== undefined ? req.body.quoteId : (await pricing.quote(riderId, quoteInput(req.body), req.correlationId)).quoteId;
     const tripId = crypto.randomUUID();
     const trip = await events.transaction(async client => {
-      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId", "vehicleType") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId, vehicleType]);
+      const locked = await pricing.lockQuote(client, quoteId, riderId, req.body);
+      if (locked.tripId) return findTrip(client, locked.tripId);
+      const { pickup, destination, estimatedDistance, estimatedDuration, fareAmount, vehicleType } = locked.snapshot;
+      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId", "vehicleType", "quoteId", "estimatedDuration", "pricingSnapshot") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId, vehicleType, quoteId, estimatedDuration, locked.snapshot]);
+      await client.query('UPDATE fare_quotes SET trip_id=$2 WHERE quote_id=$1', [quoteId, tripId]);
       await client.query('INSERT INTO trip_status_history ("tripId", new_status, reason) VALUES ($1,$2,$3)', [tripId, 'REQUESTED', 'trip requested']);
       await events.enqueue(client, 'trip.requested', { tripId, riderId, pickup, destination, estimatedDistance, fareAmount, vehicleType }, req.correlationId);
       return row;
@@ -102,7 +111,7 @@ module.exports = app => {
         if ([400, 409].includes(error.status)) fail(409, 'Driver can no longer reject this trip');
         if (error.status !== 404) throw error;
       }
-      await events.enqueue(client, 'trip.driver_rejected', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, ...(trip.vehicleType ? { vehicleType: trip.vehicleType } : {}), rejectedAt: new Date().toISOString() }, correlationId);
+      await events.enqueue(client, 'trip.driver_rejected', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, vehicleType: trip.vehicleType || 'MOTORCYCLE', rejectedAt: new Date().toISOString() }, correlationId);
       return updated;
     });
     res.json(result);

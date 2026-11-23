@@ -94,15 +94,15 @@ Tài xế không tự nhập hay chạm chọn vị trí. Giới hạn của b�
 
 ### Loại xe và giá cước
 
-Khách chọn **Xe máy**, **Ô tô 4 chỗ** hoặc **Ô tô 7 chỗ**. Bảng giá nằm trong bảng `fare_rates` của `trip_db` (tạo và nạp dữ liệu tự động khi Trip Service khởi động); đổi giá bằng cách cập nhật bảng này, Trip Service đọc lại sau tối đa 30 giây.
+Khách chọn **Xe máy**, **Ô tô 4 chỗ** hoặc **Ô tô 7 chỗ**. Bảng giá nằm trong bảng `fare_rates` của `trip_db` (tạo và nạp dữ liệu tự động từ `src/pricing-schema.sql` khi Trip Service khởi động); đổi giá bằng cách cập nhật bảng này, Trip Service đọc lại sau tối đa 30 giây.
 
-| Loại xe | Giá mở cửa | Mỗi km |
-| --- | --- | --- |
-| Xe máy | 12.000 ₫ | 10.000 ₫ |
-| Ô tô 4 chỗ | 20.000 ₫ | 15.000 ₫ |
-| Ô tô 7 chỗ | 25.000 ₫ | 18.000 ₫ |
+| Loại xe | Giá mở cửa | Mỗi km | Mỗi phút | Tối thiểu |
+| --- | --- | --- | --- | --- |
+| Xe máy | 12.000 ₫ | 10.000 ₫ | 300 ₫ | 12.000 ₫ |
+| Ô tô 4 chỗ | 20.000 ₫ | 14.000 ₫ | 500 ₫ | 25.000 ₫ |
+| Ô tô 7 chỗ | 25.000 ₫ | 17.000 ₫ | 600 ₫ | 30.000 ₫ |
 
-Cước = giá mở cửa + km × giá mỗi km, làm tròn lên 1.000 ₫. `POST /trips/estimate` trả giá của mọi loại xe (`options`); `POST /trips` nhận `vehicleType`, tự tính giá ở server và lưu loại xe vào chuyến. Sự kiện `trip.requested` mang `vehicleType`; Matching chỉ ghép tài xế có đúng loại xe đó (bỏ qua tài xế khác loại dù gần hơn), không có thì chuyến chuyển `FAILED`.
+Cước tính theo dynamic pricing (`docs/dynamic-pricing.md`): giá mở cửa + km + phút, nhân hệ số giờ cao điểm, cầu/cung, cuối tuần/ngày lễ, trời mưa, làm tròn lên 1.000 ₫. `POST /trips/estimate` không kèm `vehicleType` trả quote của mọi loại xe (`options`, mỗi loại một `quoteId`); `POST /trips` nhận `vehicleType` (hoặc `quoteId` để giữ đúng giá đã hiển thị), tự tính giá ở server và lưu loại xe vào chuyến. Sự kiện `trip.requested` mang `vehicleType`; Matching chỉ ghép tài xế có đúng loại xe đó (bỏ qua tài xế khác loại dù gần hơn), không có thì chuyến chuyển `FAILED`.
 
 ### API bổ sung ở Trip Service
 

@@ -16,19 +16,22 @@ const faults = process.argv.includes('--faults');
 const compose = (...args) => execFileSync('docker', ['compose', '-f', 'deploy/docker-compose.yml', '--env-file', '.env', '--profile', 'scale', ...args], { cwd: root, timeout: 90000, stdio: 'pipe' });
 const pool = prefix => new Pool({ host: '127.0.0.1', port: Number(process.env[`${prefix}_DB_PORT`]), user: process.env[`${prefix}_DB_USER`], password: process.env[`${prefix}_DB_PASSWORD`], database: process.env[`${prefix}_DB_NAME`] });
 const tripDb = pool('TRIP'), matchingDb = pool('MATCHING');
-const context = { connection: null, channel: null, paused: new Set() };
+const context = { connection: null, channel: null, paused: new Set(), drivers: [] };
 // Separate repeated runs from drivers left in GEO by earlier test runs.
 const pickup = { lat: 12 + crypto.randomInt(0, 1000000) / 1000000, lng: 100 + crypto.randomInt(0, 1000000) / 1000000 };
 const observed = [];
 let passed = 0;
 function pass(message) { passed++; console.log(`PASS ${passed}: ${message}`); }
 async function request(url, { method = 'GET', body, token, correlationId = uuid() } = {}) {
-    const response = await fetch(url, { method, signal: AbortSignal.timeout(15000), headers: { 'X-Correlation-ID': correlationId, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = text; }
-    assert.ok(response.ok, `${method} ${url}: ${response.status} ${text}`);
-    return { data, response };
+    for (let attempt = 0; ; attempt++) {
+        const response = await fetch(url, { method, signal: AbortSignal.timeout(15000), headers: { 'X-Correlation-ID': correlationId, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+        const text = await response.text();
+        if (response.status === 429 && attempt < 5) { await sleep(1100); continue; }
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        assert.ok(response.ok, `${method} ${url}: ${response.status} ${text}`);
+        return { data, response };
+    }
 }
 async function waitFor(label, check, timeout = 45000) {
     const deadline = Date.now() + timeout;
@@ -137,6 +140,7 @@ async function main() {
     console.log(`Integration run ${new Date().toISOString()}; real PostgreSQL/RabbitMQ/Eureka/Driver/Payment/Notification; faults=${faults}`);
     await broker();
     const rider = await user('ROLE_PASSENGER'), driver = await user('ROLE_DRIVER');
+    context.drivers.push(driver);
     await request(`${gateway}/drivers`, { method: 'POST', token: driver.token, body: { licensePlate: `TEST-${uuid().slice(0, 8)}`, vehicleType: 'MOTORCYCLE' } });
     await request(`${gateway}/drivers/me/go-online`, { method: 'POST', token: driver.token });
     await request(`${gateway}/drivers/me/location`, { method: 'POST', token: driver.token, body: { latitude: pickup.lat, longitude: pickup.lng } });
@@ -213,5 +217,11 @@ async function main() {
 }
 main().catch(error => { console.error(error.stack); process.exitCode = 1; }).finally(async () => {
     if (context.paused.size) { try { compose('start', ...context.paused); } catch (error) { console.error(error.message); } }
+    for (const driver of context.drivers) {
+        try {
+            const { data: state } = await request(`${gateway}/drivers/${driver.userId}`, { token: driver.token });
+            if (state.status === 'AVAILABLE') await request(`${gateway}/drivers/me/go-offline`, { method: 'POST', token: driver.token });
+        } catch (error) { console.error(`Driver cleanup failed: ${error.message}`); }
+    }
     await Promise.allSettled([tripDb.end(), matchingDb.end(), context.connection?.close()]);
 });

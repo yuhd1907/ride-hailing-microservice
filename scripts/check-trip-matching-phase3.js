@@ -66,8 +66,8 @@ const status = (trip, actor, expected, driverId) => waitFor(`${trip.tripId} -> $
   const current = await ok(`/trips/${trip.tripId}`, { actor });
   return current.status === expected && (driverId === undefined || current.driverId === driverId) && current;
 });
-async function requested(rider) {
-  return ok('/trips', { method: 'POST', actor: rider, body: { pickup, destination, fareAmount: 1, estimatedDistance: 99999 } });
+async function requested(rider, quoteId) {
+  return ok('/trips', { method: 'POST', actor: rider, body: { pickup, destination, fareAmount: 1, estimatedDistance: 99999, ...(quoteId ? { quoteId } : {}) } });
 }
 async function outbox(type, tripId, db = tripDb) {
   const { rows } = await db.query("SELECT envelope FROM event_outbox WHERE envelope->>'eventType'=$1 AND envelope->'payload'->>'tripId'=$2 ORDER BY created_at", [type, tripId]);
@@ -101,13 +101,15 @@ async function main() {
   const driverA = await onlineDriver(0), driverB = await onlineDriver(0.002);
   const body = { pickup, destination };
   const quote = await ok('/trips/estimate', { method: 'POST', actor: rider, body });
-  assert.deepEqual(quote, await ok('/trips/estimate', { method: 'POST', actor: rider, body }));
+  const nextQuote = await ok('/trips/estimate', { method: 'POST', actor: rider, body });
+  assert.notEqual(quote.quoteId, nextQuote.quoteId);
+  assert.equal(quote.pricingVersion, 'dynamic-v1');
   assert.equal((await call('/trips', { method: 'POST', actor: driverA, body })).status, 403);
   assert.equal((await call('/trips', { method: 'POST', actor: rider, body: { ...body, riderId: other.userId } })).status, 403);
   assert.equal((await call('/trips', { method: 'POST', body })).status, 401);
-  pass(`Server quote is deterministic: distance=${quote.estimatedDistance} km; fare=${quote.fareAmount} VND; driver/forged passenger/anonymous bookings denied`);
+  pass(`Server issued locked quote ${quote.quoteId}: distance=${quote.estimatedDistance} km; fare=${quote.fareAmount} VND; driver/forged passenger/anonymous bookings denied`);
 
-  const trip = await requested(rider);
+  const trip = await requested(rider, quote.quoteId);
   assert.equal(trip.passengerId, rider.userId);
   assert.equal(Number(trip.fare), quote.fareAmount);
   assert.equal(Number(trip.estimatedDistance), quote.estimatedDistance);
