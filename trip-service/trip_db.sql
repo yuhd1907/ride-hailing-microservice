@@ -22,6 +22,7 @@ CREATE TABLE trips (
     "estimatedDistance" NUMERIC(10, 2) NOT NULL CHECK ("estimatedDistance" >= 0),
     fare NUMERIC(12, 2) NOT NULL CHECK (fare >= 0),
     status trip_status NOT NULL DEFAULT 'REQUESTED',
+    "vehicleType" VARCHAR(20) NOT NULL DEFAULT 'MOTORCYCLE',
     "paymentId" UUID,
     "sagaId" UUID,
     version INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -43,6 +44,9 @@ CREATE INDEX trips_driver_id_idx ON trips ("driverId") WHERE "driverId" IS NOT N
 CREATE INDEX trips_status_idx ON trips (status);
 CREATE INDEX trip_status_history_trip_id_created_at_idx
     ON trip_status_history ("tripId", "createdAt" DESC);
+
+-- Bảng giá theo loại xe: Trip Service tạo bảng fare_rates và nạp giá mặc định khi khởi động
+-- (src/rates.js), đồng thời thêm cột "vehicleType" cho volume cũ.
 
 -- Phase 2: runtime also applies this additive migration for existing databases.
 CREATE TABLE IF NOT EXISTS processed_events (

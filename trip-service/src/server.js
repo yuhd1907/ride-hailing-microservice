@@ -9,6 +9,7 @@ const identity = require('./identity');
 const app = express();
 const events = require('./events');
 const saga = require('./saga');
+const rates = require('./rates');
 const { uuid } = require('./validation');
 const port = Number(process.env.TRIP_SERVICE_PORT || process.env.PORT || 8083);
 const log = (level, correlationId, method, url, message) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), level, service: identity.service, instanceId: identity.instanceId, correlationId, tripId: null, eventId: null, method, url, message }));
@@ -29,7 +30,7 @@ rabbitmq.consume('matching.driver_assigned', saga.assigned);
 rabbitmq.consume('matching.failed', saga.failed);
 let outboxTimer;
 const server = app.listen(port, () => log('info', null, null, null, `trip-service listening on ${port}`));
-(async () => { for (; ;) { try { await events.initialize(); await rabbitmq.connect(); outboxTimer = setInterval(events.flush, 1000); log('info', null, null, null, 'RabbitMQ connected'); break; } catch (e) { log('error', null, null, null, `Startup failed: ${errorDetails(e)}`); await new Promise(r => setTimeout(r, 3000)); } } try { eureka.start(); } catch (e) { log('error', null, null, null, `Eureka startup failed: ${errorDetails(e)}`); } })();
+(async () => { for (; ;) { try { await events.initialize(); await rates.initialize(db); await rabbitmq.connect(); outboxTimer = setInterval(events.flush, 1000); log('info', null, null, null, 'RabbitMQ connected'); break; } catch (e) { log('error', null, null, null, `Startup failed: ${errorDetails(e)}`); await new Promise(r => setTimeout(r, 3000)); } } try { eureka.start(); } catch (e) { log('error', null, null, null, `Eureka startup failed: ${errorDetails(e)}`); } })();
 let shuttingDown = false;
 async function shutdown() {
     if (shuttingDown) return;

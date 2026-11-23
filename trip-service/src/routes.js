@@ -4,9 +4,13 @@ const db = require('./db');
 const events = require('./events');
 const { history } = require('./saga');
 const { uuid } = require('./validation');
-const { actor, assignedDriver, fail } = require('./auth');
-const { estimate } = require('./fare');
+const { identity, actor, assignedDriver, canRead, fail } = require('./auth');
+const { estimate, point } = require('./fare');
 const driver = require('./service-client');
+const rates = require('./rates')(db);
+
+const TRIP_STATUSES = ['REQUESTED', 'MATCHING', 'AWAITING_DRIVER', 'IN_PROGRESS', 'PAYMENT_PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'FAILED'];
+const DEFAULT_VEHICLE = 'MOTORCYCLE';
 
 async function findTrip(client, id) {
   if (!uuid(id)) fail(400, 'Invalid tripId');
@@ -22,35 +26,66 @@ function correlation(req, res, trip) {
 }
 
 module.exports = app => {
+  // Báo giá mọi loại xe (options); fareAmount và vehicleType là của loại xe được chọn (mặc định loại đầu bảng).
   app.post('/trips/estimate', async (req, res) => {
     actor(req, 'ROLE_PASSENGER');
-    res.json(estimate(req.body?.pickup, req.body?.destination));
+    res.json(estimate(req.body?.pickup, req.body?.destination, await rates.list(), req.body?.vehicleType ?? undefined));
+  });
+
+  // Các route cố định phải đứng trước /trips/:id, nếu không "me" bị hiểu là mã chuyến.
+  app.get('/trips/fare-rates', async (req, res) => {
+    identity(req);
+    res.json(await rates.list());
+  });
+
+  // Hành khách: chuyến mình đặt. Tài xế: chuyến được giao cho mình. Mới nhất trước, tối đa 100.
+  app.get('/trips/me', async (req, res) => {
+    const { userId, roles } = identity(req);
+    const column = roles.includes('ROLE_PASSENGER') ? 'passengerId' : roles.includes('ROLE_DRIVER') ? 'driverId' : null;
+    if (!column) fail(403, 'Required role: ROLE_PASSENGER or ROLE_DRIVER');
+    const status = req.query.status || null;
+    if (status !== null && !TRIP_STATUSES.includes(status)) fail(400, 'Invalid status');
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+    const args = [userId];
+    let sql = `SELECT * FROM trips WHERE "${column}"=$1`;
+    if (status) { args.push(status); sql += ' AND status=$2'; }
+    args.push(limit);
+    sql += ` ORDER BY "createdAt" DESC LIMIT $${args.length}`;
+    const { rows } = await db.query(sql, args);
+    res.json(rows);
   });
 
   app.post('/trips', async (req, res) => {
     const riderId = actor(req, 'ROLE_PASSENGER');
     if (req.body?.riderId !== undefined && req.body.riderId?.toLowerCase?.() !== riderId) fail(403, 'Cannot book for another passenger');
-    const { pickup, destination } = req.body || {};
-    const { estimatedDistance, fareAmount } = estimate(pickup, destination);
+    const pickup = point(req.body?.pickup);
+    const destination = point(req.body?.destination);
+    const vehicleType = req.body?.vehicleType ?? DEFAULT_VEHICLE;
+    const { estimatedDistance, fareAmount } = estimate(pickup, destination, await rates.list(), vehicleType);
     const tripId = crypto.randomUUID();
     const trip = await events.transaction(async client => {
-      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId") VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId]);
+      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId", "vehicleType") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId, vehicleType]);
       await client.query('INSERT INTO trip_status_history ("tripId", new_status, reason) VALUES ($1,$2,$3)', [tripId, 'REQUESTED', 'trip requested']);
-      await events.enqueue(client, 'trip.requested', { tripId, riderId, pickup, destination, estimatedDistance, fareAmount }, req.correlationId);
+      await events.enqueue(client, 'trip.requested', { tripId, riderId, pickup, destination, estimatedDistance, fareAmount, vehicleType }, req.correlationId);
       return row;
     });
     res.status(201).json(trip);
   });
 
   app.get('/trips/:id', async (req, res) => {
-    const userId = req.get('x-user-id');
-    if (!uuid(userId)) fail(401, 'Missing authenticated identity');
+    const viewer = identity(req);
     const trip = await findTrip(db, req.params.id);
-    const roles = (req.get('x-user-roles') || '').split(',').map(value => value.trim());
-    const passenger = roles.includes('ROLE_PASSENGER') && trip.passengerId === userId.toLowerCase();
-    const assigned = roles.includes('ROLE_DRIVER') && trip.driverId === userId.toLowerCase();
-    if (!passenger && !assigned) fail(403, 'Trip is not accessible to this user');
+    canRead(viewer, trip);
     res.json(trip);
+  });
+
+  // Các mốc trạng thái của chuyến, cũ nhất trước; cùng quyền đọc như GET /trips/:id.
+  app.get('/trips/:id/history', async (req, res) => {
+    const viewer = identity(req);
+    const trip = await findTrip(db, req.params.id);
+    canRead(viewer, trip);
+    const { rows } = await db.query('SELECT previous_status AS "previousStatus", new_status AS status, reason, "createdAt" FROM trip_status_history WHERE "tripId"=$1 ORDER BY "createdAt", id', [trip.tripId]);
+    res.json(rows);
   });
 
   app.post('/trips/:id/reject', async (req, res) => {
@@ -67,7 +102,7 @@ module.exports = app => {
         if ([400, 409].includes(error.status)) fail(409, 'Driver can no longer reject this trip');
         if (error.status !== 404) throw error;
       }
-      await events.enqueue(client, 'trip.driver_rejected', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, rejectedAt: new Date().toISOString() }, correlationId);
+      await events.enqueue(client, 'trip.driver_rejected', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, ...(trip.vehicleType ? { vehicleType: trip.vehicleType } : {}), rejectedAt: new Date().toISOString() }, correlationId);
       return updated;
     });
     res.json(result);
