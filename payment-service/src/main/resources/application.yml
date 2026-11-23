@@ -56,9 +56,6 @@ payment:
     # Khoản khoá chưa trừ/mở sau thời gian này thì tự mở (lưới an toàn)
     hold-ttl: ${PAYMENT_BANK_HOLD_TTL:PT2H}
     expiry-check-interval-ms: 60000
-  simulation:
-    # Charges above this amount (VND) fail with INSUFFICIENT_FUNDS
-    max-amount: ${PAYMENT_MAX_AMOUNT:2000000}
   outbox:
     poll-interval-ms: 1000
     initial-delay-ms: 5000
