@@ -12,8 +12,8 @@ function validate(event, type) {
     if (type === 'payment.succeeded' && !utc(p.paidAt)) throw new InvalidEvent('Invalid paidAt');
     if (type === 'payment.failed' && (!utc(p.failedAt) || !['INSUFFICIENT_FUNDS', 'PAYMENT_DECLINED', 'INTERNAL_ERROR'].includes(p.reason))) throw new InvalidEvent('Invalid failure payload');
   } else if (type === 'trip.requested' || type === 'trip.driver_rejected') {
-    if (p.vehicleType !== undefined && !['MOTORCYCLE', 'CAR_4_SEAT', 'CAR_7_SEAT'].includes(p.vehicleType)) throw new InvalidEvent('Invalid vehicleType');
     if (!p.pickup || !Number.isFinite(p.pickup.lat) || Math.abs(p.pickup.lat) > 90 || !Number.isFinite(p.pickup.lng) || Math.abs(p.pickup.lng) > 180) throw new InvalidEvent('Invalid pickup');
+    if (p.vehicleType != null && !['MOTORCYCLE', 'CAR_4_SEAT', 'CAR_7_SEAT'].includes(p.vehicleType)) throw new InvalidEvent('Invalid vehicleType');
     if (type === 'trip.driver_rejected' && (!uuid(p.driverId) || !utc(p.rejectedAt))) throw new InvalidEvent('Invalid rejection');
   } else if (type === 'matching.driver_assigned' && (!uuid(p.driverId) || !utc(p.assignedAt) || (p.reservationId != null && !uuid(p.reservationId)))) throw new InvalidEvent('Invalid assignment');
   else if (type === 'matching.failed' || type === 'trip.failed') {

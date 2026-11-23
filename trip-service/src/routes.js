@@ -4,9 +4,15 @@ const db = require('./db');
 const events = require('./events');
 const { history } = require('./saga');
 const { uuid } = require('./validation');
-const { actor, assignedDriver, fail } = require('./auth');
+const { identity, actor, assignedDriver, canRead, fail } = require('./auth');
+const { point, VEHICLES } = require('./fare');
 const pricing = require('./pricing');
 const driver = require('./service-client');
+
+const TRIP_STATUSES = ['REQUESTED', 'MATCHING', 'AWAITING_DRIVER', 'IN_PROGRESS', 'PAYMENT_PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'FAILED'];
+
+// Quote chỉ lưu tọa độ và địa chỉ đã làm sạch; chuyến lấy pickup/destination từ quote.
+const quoteInput = (body, vehicleType = body?.vehicleType ?? undefined) => ({ pickup: point(body?.pickup), destination: point(body?.destination), vehicleType });
 
 async function findTrip(client, id) {
   if (!uuid(id)) fail(400, 'Invalid tripId');
@@ -22,9 +28,37 @@ function correlation(req, res, trip) {
 }
 
 module.exports = app => {
+  // Có vehicleType: một quote, client gửi lại quoteId khi đặt để khóa giá.
+  // Không có (web chọn xe sau): quote cho mọi loại xe trong options; phần ngoài là quote xe máy.
   app.post('/trips/estimate', async (req, res) => {
     const riderId = actor(req, 'ROLE_PASSENGER');
-    res.json(await pricing.quote(riderId, req.body, req.correlationId));
+    if (req.body?.vehicleType != null) return res.json(await pricing.quote(riderId, quoteInput(req.body), req.correlationId));
+    const options = await Promise.all(VEHICLES.map(async ({ vehicleType, displayName, seats }) =>
+      ({ ...await pricing.quote(riderId, quoteInput(req.body, vehicleType), req.correlationId), displayName, seats })));
+    res.json({ ...options[0], options });
+  });
+
+  // Các route cố định phải đứng trước /trips/:id, nếu không "me" bị hiểu là mã chuyến.
+  app.get('/trips/fare-rates', async (req, res) => {
+    identity(req);
+    res.json(await pricing.rates());
+  });
+
+  // Hành khách: chuyến mình đặt. Tài xế: chuyến được giao cho mình. Mới nhất trước, tối đa 100.
+  app.get('/trips/me', async (req, res) => {
+    const { userId, roles } = identity(req);
+    const column = roles.includes('ROLE_PASSENGER') ? 'passengerId' : roles.includes('ROLE_DRIVER') ? 'driverId' : null;
+    if (!column) fail(403, 'Required role: ROLE_PASSENGER or ROLE_DRIVER');
+    const status = req.query.status || null;
+    if (status !== null && !TRIP_STATUSES.includes(status)) fail(400, 'Invalid status');
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+    const args = [userId];
+    let sql = `SELECT * FROM trips WHERE "${column}"=$1`;
+    if (status) { args.push(status); sql += ' AND status=$2'; }
+    args.push(limit);
+    sql += ` ORDER BY "createdAt" DESC LIMIT $${args.length}`;
+    const { rows } = await db.query(sql, args);
+    res.json(rows);
   });
 
   app.post('/trips', async (req, res) => {
@@ -32,7 +66,7 @@ module.exports = app => {
     if (req.body?.riderId !== undefined && req.body.riderId?.toLowerCase?.() !== riderId) fail(403, 'Cannot book for another passenger');
     // Legacy clients may book directly; server issues a fresh quote for that request.
     // Clients displaying an estimate must send quoteId to lock the displayed fare.
-    const quoteId = req.body?.quoteId !== undefined ? req.body.quoteId : (await pricing.quote(riderId, req.body, req.correlationId)).quoteId;
+    const quoteId = req.body?.quoteId !== undefined ? req.body.quoteId : (await pricing.quote(riderId, quoteInput(req.body), req.correlationId)).quoteId;
     const tripId = crypto.randomUUID();
     const trip = await events.transaction(async client => {
       const locked = await pricing.lockQuote(client, quoteId, riderId, req.body);
@@ -48,14 +82,19 @@ module.exports = app => {
   });
 
   app.get('/trips/:id', async (req, res) => {
-    const userId = req.get('x-user-id');
-    if (!uuid(userId)) fail(401, 'Missing authenticated identity');
+    const viewer = identity(req);
     const trip = await findTrip(db, req.params.id);
-    const roles = (req.get('x-user-roles') || '').split(',').map(value => value.trim());
-    const passenger = roles.includes('ROLE_PASSENGER') && trip.passengerId === userId.toLowerCase();
-    const assigned = roles.includes('ROLE_DRIVER') && trip.driverId === userId.toLowerCase();
-    if (!passenger && !assigned) fail(403, 'Trip is not accessible to this user');
+    canRead(viewer, trip);
     res.json(trip);
+  });
+
+  // Các mốc trạng thái của chuyến, cũ nhất trước; cùng quyền đọc như GET /trips/:id.
+  app.get('/trips/:id/history', async (req, res) => {
+    const viewer = identity(req);
+    const trip = await findTrip(db, req.params.id);
+    canRead(viewer, trip);
+    const { rows } = await db.query('SELECT previous_status AS "previousStatus", new_status AS status, reason, "createdAt" FROM trip_status_history WHERE "tripId"=$1 ORDER BY "createdAt", id', [trip.tripId]);
+    res.json(rows);
   });
 
   app.post('/trips/:id/reject', async (req, res) => {

@@ -1,4 +1,13 @@
 -- Additive, idempotent migration, applied by Trip before accepting requests.
+-- Volume tạo từ bản rates.js cũ có fare_rates với cột camelCase ("vehicleType", "baseFare"...):
+-- đổi tên thành fare_rates_legacy (giữ dữ liệu) để tạo lại bảng theo cấu trúc dưới đây.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = current_schema() AND table_name = 'fare_rates' AND column_name = 'vehicleType') THEN
+        ALTER TABLE fare_rates RENAME TO fare_rates_legacy;
+    END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS fare_rates (
     vehicle_type TEXT PRIMARY KEY CHECK (vehicle_type IN ('MOTORCYCLE', 'CAR_4_SEAT', 'CAR_7_SEAT')),
     base_fare INTEGER NOT NULL CHECK (base_fare > 0),

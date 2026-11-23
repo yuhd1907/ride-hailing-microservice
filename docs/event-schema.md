@@ -228,9 +228,11 @@ Trip Service đã hoàn tác chuyến sau khi thanh toán thất bại. Notifica
 
 Trip phát cho Matching sau khi tạo chuyến. Payload bắt buộc: `tripId`, `riderId`
 (UUID), `pickup` (`lat`, `lng` dạng number hợp lệ). Có thể kèm `destination`
-và `fareAmount`. Từ dynamic pricing, producer gửi `vehicleType` (`MOTORCYCLE`,
-`CAR_4_SEAT`, `CAR_7_SEAT`); Matching chỉ chọn tài xế cùng loại xe. Consumer chấp nhận event cũ
-thiếu trường này để tương thích. Queue `matching-service.trip.requested`.
+và `fareAmount`. Queue `matching-service.trip.requested`.
+Từ dynamic pricing, Trip luôn gửi `vehicleType` (`MOTORCYCLE` | `CAR_4_SEAT` | `CAR_7_SEAT`):
+Matching chỉ ghép tài xế đúng loại xe. Consumer vẫn chấp nhận event cũ thiếu field này và ghép
+với mọi loại xe; giá trị khác ba loại trên làm event vào DLQ. `trip.driver_rejected` mang cùng
+`vehicleType` để ghép lại đúng loại xe.
 Trip consume thêm queue `trip-service.matching.driver_assigned` để gán tài xế.
 
 ### 2.7 `trip.driver_rejected`
@@ -308,5 +310,6 @@ khi vắng mặt Trip lấy tài xế đã lưu trong DB, khi có thì kiểm tr
 | 2026-10-18 | TV Payment/Notification | Bản nháp đầu tiên |
 | 2026-10-25 | TV Payment/Notification | Chốt mọi ID là UUID (idempotency key = `tripId`), thêm quy ước Correlation ID và tài khoản RabbitMQ (mục 1.5) |
 | 2026-11-10 | TV2 Trip/Matching | AGREED; riderId, CANCELLED; trả lời 6 câu hỏi; retry/DLQ, trip.requested và outbox |
+| 2026-11-23 | TV2 Trip/Matching | Thêm `vehicleType` tùy chọn vào `trip.requested`, `trip.driver_rejected` |
 | 2026-11-16 | TV1 Driver/Gateway (phối hợp TV2) | Thêm `trip.driver_rejected` (mục 2.7) cho luồng tài xế từ chối chuyến; không đổi field của event cũ |
 | 2026-11-17 | TV2 Trip/Matching | Phase3: giá server, accept/cancel, `matching.failed`, `trip.failed`, `trip.cancelled`, reservationId tùy chọn |

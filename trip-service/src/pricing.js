@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { fail } = require('./auth');
 const { uuid } = require('./validation');
-const { location } = require('./fare');
+const { location, VEHICLES } = require('./fare');
 const { validatePolicy, cellFor, surgeFor, calculate } = require('./pricing-policy');
 const { createProviders } = require('./pricing-providers');
 
@@ -90,6 +90,14 @@ function createPricing({ db, cache, driver, providers = createProviders(), now =
     log('info', 'Dynamic fare quoted', { correlationId, quoteId: snapshot.quoteId, fareAmount: snapshot.fareAmount });
     return stored.snapshot;
   }
+  // Bảng giá cho GET /trips/fare-rates: giá gốc từ fare_rates, tên và số chỗ từ fare.VEHICLES.
+  async function rates() {
+    const { rates: rows } = await getPolicy();
+    return VEHICLES.flatMap(vehicle => {
+      const rate = rows.find(r => r.vehicle_type === vehicle.vehicleType);
+      return rate ? [{ ...vehicle, baseFare: rate.base_fare, perKm: rate.per_km, perMinute: rate.per_minute, minimumFare: rate.minimum_fare }] : [];
+    });
+  }
   async function lockQuote(client, quoteId, passengerId, body = {}) {
     if (!uuid(quoteId)) fail(400, 'Invalid quoteId');
     const { rows: [row] } = await client.query('SELECT * FROM fare_quotes WHERE quote_id=$1 AND passenger_id=$2 FOR UPDATE', [quoteId, passengerId]);
@@ -169,7 +177,7 @@ function createPricing({ db, cache, driver, providers = createProviders(), now =
     clearTimeout(timer);
     if (cache.isOpen) cache.destroy();
   }
-  return { quote, lockQuote, initialize, getPolicy, refreshSurge, start, close };
+  return { quote, rates, lockQuote, initialize, getPolicy, refreshSurge, start, close };
 }
 
 let instance;
@@ -178,6 +186,6 @@ function current() {
   return instance;
 }
 module.exports = { createPricing, POLICY_SQL, DEMAND_SQL,
-  quote: (...args) => current().quote(...args), lockQuote: (...args) => current().lockQuote(...args),
+  quote: (...args) => current().quote(...args), rates: () => current().rates(), lockQuote: (...args) => current().lockQuote(...args),
   initialize: () => current().initialize(), start: () => current().start(), close: () => instance?.close(),
 };

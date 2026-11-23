@@ -32,8 +32,9 @@ module.exports.prepare = async event => {
     if (['ASSIGNED', 'FAILED', 'CANCELLED'].includes(row.status) || row.selectedDriverId) return;
     const { pickup } = event.payload;
     const candidates = await driver.request('DRIVER-SERVICE', `/internal/drivers/available?lat=${pickup.lat}&lng=${pickup.lng}&radius=5`, event.correlationId, null, 'GET');
-    const candidate = candidates.find(item => (!event.payload.vehicleType || item.vehicleType === event.payload.vehicleType)
-      && !row.attemptedDriverIds.includes(item.id));
+    // Chỉ ghép đúng loại xe khách chọn; event cũ không có vehicleType thì ghép mọi loại.
+    const { vehicleType } = event.payload;
+    const candidate = candidates.find(item => !row.attemptedDriverIds.includes(item.id) && (!vehicleType || item.vehicleType === vehicleType));
     if (!candidate) {
       await client.query('UPDATE matching_requests SET status=$2, "selectedDriverId"=$3 WHERE "tripId"=$1', [event.payload.tripId, 'FAILED', null]);
       await events.enqueue(client, 'matching.failed', { tripId: event.payload.tripId, riderId: event.payload.riderId, reason: 'NO_AVAILABLE_DRIVERS', failedAt: new Date().toISOString() }, event.correlationId);
