@@ -1,12 +1,15 @@
 package com.ridehail.paymentservice.config;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import com.ridehail.paymentservice.messaging.EventTypes;
 import com.ridehail.paymentservice.messaging.InvalidEventException;
 import com.ridehail.paymentservice.messaging.LoggingDeadLetterRecoverer;
-import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Declarable;
+import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.ExchangeBuilder;
 import org.springframework.amqp.core.Queue;
@@ -20,12 +23,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 
 /**
- * Khai báo exchange, queue và dead-letter queue của Payment Service.
+ * Khai báo exchange, queue và dead-letter queue của Payment Service: mỗi event trong
+ * {@link EventTypes#SUBSCRIBED} có queue payment-service.&lt;eventType&gt; và DLQ riêng.
  * <p>
  * Luồng lỗi: listener lỗi được retry tại chỗ (cấu hình
  * spring.rabbitmq.listener.simple.retry), hết số lần thử thì
  * {@link LoggingDeadLetterRecoverer} reject message, RabbitMQ chuyển message qua exchange
- * {@value #DEAD_LETTER_EXCHANGE} vào queue {@value #TRIP_COMPLETED_DLQ}.
+ * {@value #DEAD_LETTER_EXCHANGE} vào DLQ của queue đó.
  */
 @Configuration
 public class RabbitConfig {
@@ -34,41 +38,41 @@ public class RabbitConfig {
 
     public static final String DEAD_LETTER_EXCHANGE = "rideflow.dlx";
 
-    public static final String TRIP_COMPLETED_QUEUE = "payment-service.trip.completed";
+    public static final String QUEUE_PREFIX = "payment-service.";
 
-    public static final String TRIP_COMPLETED_DLQ = TRIP_COMPLETED_QUEUE + ".dlq";
+    public static final String DLQ_SUFFIX = ".dlq";
 
-    @Bean
-    public TopicExchange eventsExchange() {
-        return ExchangeBuilder.topicExchange(EVENTS_EXCHANGE).durable(true).build();
-    }
+    public static final String TRIP_COMPLETED_QUEUE = QUEUE_PREFIX + EventTypes.TRIP_COMPLETED;
 
-    @Bean
-    public DirectExchange deadLetterExchange() {
-        return ExchangeBuilder.directExchange(DEAD_LETTER_EXCHANGE).durable(true).build();
-    }
+    public static final String TRIP_COMPLETED_DLQ = TRIP_COMPLETED_QUEUE + DLQ_SUFFIX;
 
-    @Bean
-    public Queue tripCompletedQueue() {
-        return QueueBuilder.durable(TRIP_COMPLETED_QUEUE)
-            .deadLetterExchange(DEAD_LETTER_EXCHANGE)
-            .deadLetterRoutingKey(TRIP_COMPLETED_DLQ)
-            .build();
-    }
+    public static final String TRIP_REQUESTED_QUEUE = QUEUE_PREFIX + EventTypes.TRIP_REQUESTED;
+
+    public static final String TRIP_CANCELLED_QUEUE = QUEUE_PREFIX + EventTypes.TRIP_CANCELLED;
+
+    public static final String TRIP_FAILED_QUEUE = QUEUE_PREFIX + EventTypes.TRIP_FAILED;
 
     @Bean
-    public Queue tripCompletedDeadLetterQueue() {
-        return QueueBuilder.durable(TRIP_COMPLETED_DLQ).build();
-    }
-
-    @Bean
-    public Binding tripCompletedBinding() {
-        return BindingBuilder.bind(tripCompletedQueue()).to(eventsExchange()).with(EventTypes.TRIP_COMPLETED);
-    }
-
-    @Bean
-    public Binding tripCompletedDeadLetterBinding() {
-        return BindingBuilder.bind(tripCompletedDeadLetterQueue()).to(deadLetterExchange()).with(TRIP_COMPLETED_DLQ);
+    public Declarables paymentTopology() {
+        TopicExchange events = ExchangeBuilder.topicExchange(EVENTS_EXCHANGE).durable(true).build();
+        DirectExchange deadLetters = ExchangeBuilder.directExchange(DEAD_LETTER_EXCHANGE).durable(true).build();
+        List<Declarable> declarables = new ArrayList<>();
+        declarables.add(events);
+        declarables.add(deadLetters);
+        for (String eventType : EventTypes.SUBSCRIBED) {
+            String queueName = QUEUE_PREFIX + eventType;
+            String deadLetterName = queueName + DLQ_SUFFIX;
+            Queue queue = QueueBuilder.durable(queueName)
+                .deadLetterExchange(DEAD_LETTER_EXCHANGE)
+                .deadLetterRoutingKey(deadLetterName)
+                .build();
+            Queue deadLetterQueue = QueueBuilder.durable(deadLetterName).build();
+            declarables.add(queue);
+            declarables.add(deadLetterQueue);
+            declarables.add(BindingBuilder.bind(queue).to(events).with(eventType));
+            declarables.add(BindingBuilder.bind(deadLetterQueue).to(deadLetters).with(deadLetterName));
+        }
+        return new Declarables(declarables);
     }
 
     @Bean
@@ -77,7 +81,7 @@ public class RabbitConfig {
     }
 
     /**
-     * Message sai định dạng không được retry: chuyển thẳng vào DLQ.
+     * Message không hợp lệ ({@link InvalidEventException}) không retry mà vào DLQ ngay.
      */
     @Bean
     public RabbitRetryTemplateCustomizer listenerRetryPolicy(
