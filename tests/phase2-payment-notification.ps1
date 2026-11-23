@@ -142,6 +142,10 @@ Invoke-RestMethod -Method Delete -Uri "$PaymentUrl/internal/payments/faults" -Us
 Invoke-RestMethod -Method Delete -Uri "$NotificationUrl/internal/notifications/faults" -UseBasicParsing | Out-Null
 Invoke-RestMethod -Method Delete -Uri "$PaymentUrl/internal/payments/dlq" -UseBasicParsing | Out-Null
 Invoke-RestMethod -Method Delete -Uri "$NotificationUrl/internal/notifications/dlq" -UseBasicParsing | Out-Null
+# Mỗi lần chạy trừ khoảng 1 triệu đ từ ngân hàng ảo của passenger1. Đặt số dư cố định 2.000.000 đ
+# để chạy lại bao nhiêu lần cũng cho cùng kết quả: đủ cho các chuyến 80.000-125.000 đ, còn T2
+# (5.000.000 đ) vẫn thất bại vì thiếu tiền.
+Invoke-RestMethod -Method Put -Uri "$PaymentUrl/internal/payments/bank/accounts/$Rider1/balance?amount=2000000" -UseBasicParsing | Out-Null
 
 # ---------------------------------------------------------------------------------------
 # T1. Luồng thành công: trip.completed -> payment SUCCESS -> payment.succeeded -> thông báo
