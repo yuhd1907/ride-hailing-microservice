@@ -9,6 +9,7 @@ import com.ridehail.notificationservice.dto.NotificationDraft;
 import com.ridehail.notificationservice.dto.event.DriverAssignedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentFailedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentSucceededPayload;
+import com.ridehail.notificationservice.dto.event.TripAcceptedPayload;
 import com.ridehail.notificationservice.dto.event.TripCompensatedPayload;
 import com.ridehail.notificationservice.dto.event.TripFailedPayload;
 import com.ridehail.notificationservice.service.NotificationMessageFactory;
@@ -78,6 +79,12 @@ public class NotificationEventListener {
     public void onTripFailed(Message message) {
         handle(message, EventTypes.TRIP_FAILED, TripFailedPayload.class, this.messageFactory::tripFailed,
                 TripFailedPayload::tripId);
+    }
+
+    @RabbitListener(queues = RabbitConfig.TRIP_ACCEPTED_QUEUE)
+    public void onTripAccepted(Message message) {
+        handle(message, EventTypes.TRIP_ACCEPTED, TripAcceptedPayload.class, this.messageFactory::tripAccepted,
+                TripAcceptedPayload::tripId);
     }
 
     private <T> void handle(Message message, String eventType, Class<T> payloadType,

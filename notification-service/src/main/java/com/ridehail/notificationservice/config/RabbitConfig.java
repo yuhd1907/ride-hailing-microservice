@@ -48,8 +48,10 @@ public class RabbitConfig {
 
     public static final String TRIP_FAILED_QUEUE = QUEUE_PREFIX + EventTypes.TRIP_FAILED;
 
+    public static final String TRIP_ACCEPTED_QUEUE = QUEUE_PREFIX + EventTypes.TRIP_ACCEPTED;
+
     public static final List<String> QUEUES = List.of(DRIVER_ASSIGNED_QUEUE, PAYMENT_SUCCEEDED_QUEUE,
-            PAYMENT_FAILED_QUEUE, TRIP_COMPENSATED_QUEUE, TRIP_FAILED_QUEUE);
+            PAYMENT_FAILED_QUEUE, TRIP_COMPENSATED_QUEUE, TRIP_FAILED_QUEUE, TRIP_ACCEPTED_QUEUE);
 
     public static String deadLetterQueueOf(String queue) {
         return queue + DLQ_SUFFIX;
