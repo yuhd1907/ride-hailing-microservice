@@ -11,6 +11,7 @@ import com.ridehail.notificationservice.dto.NotificationDraft;
 import com.ridehail.notificationservice.dto.event.DriverAssignedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentFailedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentSucceededPayload;
+import com.ridehail.notificationservice.dto.event.TripAcceptedPayload;
 import com.ridehail.notificationservice.dto.event.TripCompensatedPayload;
 import com.ridehail.notificationservice.dto.event.TripFailedPayload;
 import com.ridehail.notificationservice.entity.RecipientRole;
@@ -32,6 +33,8 @@ public class NotificationMessageFactory {
 
     public static final String TYPE_TRIP_FAILED = "TRIP_FAILED";
 
+    public static final String TYPE_TRIP_ACCEPTED = "TRIP_ACCEPTED";
+
     private static final Locale VIETNAMESE = Locale.forLanguageTag("vi-VN");
 
     public List<NotificationDraft> driverAssigned(DriverAssignedPayload payload) {
@@ -44,9 +47,15 @@ public class NotificationMessageFactory {
     }
 
     public List<NotificationDraft> paymentSucceeded(PaymentSucceededPayload payload) {
-        return List.of(new NotificationDraft(payload.riderId(), RecipientRole.PASSENGER, TYPE_PAYMENT_SUCCEEDED,
-                "Thanh toán thành công " + formatVnd(payload.amount()) + " cho chuyến " + shortId(payload.tripId())
-                        + "."));
+        String trip = shortId(payload.tripId());
+        String amount = formatVnd(payload.amount());
+        String content = switch (String.valueOf(payload.paymentMethod())) {
+            case "BANK" -> "Chuyến " + trip + " đã hoàn thành. Thanh toán thành công " + amount + " qua ngân hàng.";
+            case "CASH" -> "Chuyến " + trip + " đã hoàn thành. Thanh toán thành công " + amount + " bằng tiền mặt.";
+            default -> "Thanh toán thành công " + amount + " cho chuyến " + trip + ".";
+        };
+        return List
+            .of(new NotificationDraft(payload.riderId(), RecipientRole.PASSENGER, TYPE_PAYMENT_SUCCEEDED, content));
     }
 
     public List<NotificationDraft> paymentFailed(PaymentFailedPayload payload) {
@@ -68,7 +77,17 @@ public class NotificationMessageFactory {
         return drafts;
     }
 
+    public List<NotificationDraft> tripAccepted(TripAcceptedPayload payload) {
+        return List.of(new NotificationDraft(payload.riderId(), RecipientRole.PASSENGER, TYPE_TRIP_ACCEPTED,
+                "Tài xế đã nhận chuyến " + shortId(payload.tripId()) + ". Chuyến đi đã bắt đầu."));
+    }
+
     public List<NotificationDraft> tripFailed(TripFailedPayload payload) {
+        if ("INSUFFICIENT_FUNDS".equals(payload.reason())) {
+            return List.of(new NotificationDraft(payload.riderId(), RecipientRole.PASSENGER, TYPE_TRIP_FAILED, "Chuyến "
+                    + shortId(payload.tripId())
+                    + " không được thực hiện vì số dư tài khoản ngân hàng không đủ. Vui lòng nạp thêm tiền rồi đặt lại."));
+        }
         return List.of(new NotificationDraft(payload.riderId(), RecipientRole.PASSENGER, TYPE_TRIP_FAILED, "Chuyến "
                 + shortId(payload.tripId()) + " thất bại vì không còn tài xế khả dụng. Vui lòng đặt lại chuyến."));
     }

@@ -17,8 +17,10 @@ public final class EventTypes {
 
     public static final String TRIP_FAILED = "trip.failed";
 
+    public static final String TRIP_ACCEPTED = "trip.accepted";
+
     public static final List<String> SUBSCRIBED = List.of(DRIVER_ASSIGNED, PAYMENT_SUCCEEDED, PAYMENT_FAILED,
-            TRIP_COMPENSATED, TRIP_FAILED);
+            TRIP_COMPENSATED, TRIP_FAILED, TRIP_ACCEPTED);
 
     private EventTypes() {
     }

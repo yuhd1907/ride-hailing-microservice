@@ -16,6 +16,12 @@ public interface PaymentService {
      */
     void handleTripCompleted(EventEnvelope envelope, TripCompletedPayload payload);
 
+    /**
+     * Tài xế xác nhận đã nhận tiền mặt cho chuyến: payment CASH đang chờ chuyển SUCCESS
+     * và phát payment.succeeded. Gọi lại khi đã SUCCESS trả kết quả cũ.
+     */
+    PaymentResponse confirmCash(UUID tripId, UUID driverId);
+
     PaymentResponse getPayment(UUID paymentId, UUID requesterId);
 
     PaymentResponse getPaymentOfTrip(UUID tripId, UUID requesterId);
