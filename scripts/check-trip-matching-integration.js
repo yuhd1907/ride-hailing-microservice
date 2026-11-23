@@ -172,7 +172,14 @@ async function main() {
         await result(event, driver, 'CANCELLED');
         pass('Payment event survives Trip downtime and is consumed after restart');
         // Trip vừa khởi động lại: chờ Gateway thấy instance mới trên Eureka trước khi đặt chuyến tiếp
-        await waitFor('Gateway routes to restarted trip-service', async () => (await fetch(`${gateway}/trips/ping`, { headers: { Authorization: `Bearer ${rider.token}` }, signal: AbortSignal.timeout(5000) })).ok, 120000);
+        // Gateway giữ danh sách instance cũ tới ~35s (cache LoadBalancer), có thể còn lẫn địa chỉ cũ của container:
+        // chỉ đi tiếp khi 5 lần ping liên tiếp đều thành công.
+        let streak = 0;
+        await waitFor('Gateway routes to restarted trip-service', async () => {
+            const ok = await fetch(`${gateway}/trips/ping`, { headers: { Authorization: `Bearer ${rider.token}` }, signal: AbortSignal.timeout(5000) }).then(r => r.ok, () => false);
+            streak = ok ? streak + 1 : 0;
+            return streak >= 5;
+        }, 120000);
         compose('stop', 'payment_service'); context.paused.add('payment_service');
         const retryTrip = await pendingTrip(rider, driver, 5000000);
         const dlqBefore = (await context.channel.checkQueue(dlq)).messageCount;

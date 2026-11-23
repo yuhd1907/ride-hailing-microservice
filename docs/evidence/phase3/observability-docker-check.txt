@@ -1,0 +1,11 @@
+Observability run 2026-11-16T14:56:21.031Z; prometheus=http://127.0.0.1:9090; grafana=http://127.0.0.1:3000
+PASS 1: Prometheus tìm qua Eureka và scrape được 7 instance: api-gateway=up, driver-service=up, matching-service=up, notification-service=up, payment-service=up, trip-service=up, user-service=up
+PASS 2: Metric request của cả 7 service (Java + Node) cùng tên http_server_requests_seconds: api-gateway=58, driver-service=6, matching-service=91, notification-service=12, payment-service=11, trip-service=93, user-service=24
+PASS 3: Trạng thái circuit breaker có trong metrics: driver-service, matching-service, notification-service, payment-service, trip-service, user-service đều CLOSED
+PASS 4: Grafana chạy, 3 datasource (Loki, Prometheus, Zipkin), dashboard "RideFlow - Giám sát service" xem được không cần đăng nhập, 8 panel
+PASS 5: Mọi câu truy vấn Prometheus trên dashboard đều hợp lệ và có dữ liệu
+PASS 6: Loki đang gom log của 21 container: api_gateway, driver_postgres, driver_service_1, eureka_server, grafana, loki, matching_postgres, matching_service, notification_postgres, notification_service, payment_postgres, payment_service, prometheus, promtail, rabbitmq, redis, trip_postgres, trip_service, user_postgres, user_service, zipkin
+PASS 7: Một truy vấn theo correlationId=cd2fe18a-9093-40cf-b197-93787cad2480 ra 32 dòng log của driver_service_1, matching_service, notification_service, payment_service, trip_service, user_service
+      vd: {"timestamp":"2026-11-16T14:56:38.839Z","level":"info","service":"trip-service","instanceId":"trip-service-f8bddbb404c2-8083","correlationId":"cd2fe18a-9093-40cf-b197-93787cad2480","tripId":null,"eventId":null,"method":"GET","url":"/ping","message":"request completed (200) in 53ms"}
+PASS 8: Trường level trong log JSON được tách thành nhãn để lọc: debug, error, info, warn
+RESULT: 8 observability checks passed on the real stack. Mở http://127.0.0.1:3000 để xem dashboard.

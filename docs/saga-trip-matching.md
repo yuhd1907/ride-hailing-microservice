@@ -22,11 +22,26 @@ Trong transaction: ghi `processed_events`, cập nhật `matching_requests`, ghi
 `matching.driver_assigned`. Chỉ ack sau commit. Hết 3 lần thử chuyển DLQ;
 khi có tài xế trở lại có thể redrive message với nguyên `eventId`.
 
+Consume thêm `matching-service.trip.driver_rejected`: nếu lượt ghép đang `ASSIGNED`
+đúng tài xế vừa từ chối thì đưa về `PENDING`, bỏ tài xế đã chọn, sinh `reservationId`
+mới và giữ tài xế đó trong `attemptedDriverIds`; sau đó chạy lại đúng luồng ghép ở
+trên nên tài xế vừa từ chối không được chọn lại dù đã `AVAILABLE`. Message gửi lại
+hoặc lời từ chối cũ đến muộn không khớp điều kiện nên không phá lượt ghép mới.
+Không còn tài xế nào khác thì Matching phát `matching.failed`, Trip chuyển chuyến sang `FAILED` và Notification báo khách (chi tiết ở `docs/phase3-trip-matching.md`).
+
 ## 3. API Trip
 
 - `POST /trips`: `{riderId, pickup:{lat,lng}, destination:{lat,lng}, estimatedDistance, fareAmount}`.
 - `GET /trips/{id}`: đọc trạng thái và paymentId.
 - `POST /trips/{id}/start`: chuyển `AWAITING_DRIVER` → `IN_PROGRESS`, gọi Driver start-trip.
+- `POST /trips/{id}/reject`: tài xế đang được ghép từ chối chuyến. Người gọi lấy từ
+  header `X-User-Id` do Gateway gắn từ JWT (thiếu → 401, không phải tài xế của chuyến
+  → 403); chuyến phải đang `AWAITING_DRIVER` (khác → 409). Trong một transaction: gọi
+  `POST /internal/drivers/{driverId}/reject` body `{tripId}` để Driver trả tài xế về
+  `AVAILABLE` ngay, chuyển chuyến về `MATCHING`, xóa `driverId`, ghi outbox
+  `trip.driver_rejected`. Driver chỉ nhả lượt giữ của đúng `tripId` và trả 200 nếu tài
+  xế không còn giữ chuyến đó (idempotent); trả 400 nếu tài xế đã bắt đầu chuyến (Trip
+  trả 409). Lỗi mạng/5xx làm rollback, tài xế gọi lại được.
 - `POST /trips/{id}/complete`: body `{fareAmount}` tùy chọn, chuyển `IN_PROGRESS`
   → `PAYMENT_PENDING`. Giá cuối cùng > 0, tối đa 2 chữ số thập phân.
 
@@ -69,3 +84,7 @@ khóa chuyến `FOR UPDATE`, kiểm tra rider, driver (nếu có), số tiền v
 Chạy `node --test scripts/trip-matching.test.js` sau `npm ci` trong hai service.
 Xem [hướng dẫn kiểm thử phase 2](phase2-trip-matching.md) và minh chứng trong
 `docs/evidence/phase2/trip-matching-tests.txt`.
+
+Luồng tài xế từ chối chạy trên stack Docker thật bằng
+`node scripts/check-driver-reject.js` (cần hệ thống đang chạy và `npm ci` trong
+`trip-service`); kết quả mẫu ở `docs/evidence/phase3/driver-reject-docker-check.txt`.
