@@ -1,4 +1,5 @@
 -- Run while connected to trip_db. Requires PostgreSQL 13+ (gen_random_uuid()).
+-- Dynamic pricing tables/columns are migrated at startup from src/pricing-schema.sql.
 
 CREATE TYPE trip_status AS ENUM (
     'REQUESTED',

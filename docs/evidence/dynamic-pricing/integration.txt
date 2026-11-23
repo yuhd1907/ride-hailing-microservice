@@ -1,0 +1,13 @@
+Dynamic pricing integration: 2026-11-23T08:23:47.465Z; Docker Compose; real HTTP, PostgreSQL, Redis, RabbitMQ and Java services
+PASS 1: Server quote uses DB rates, ignores forged client fare/distance/surge and has 120-second validity; fare=29000; source=straight_line_estimate; weather=disabled
+PASS 2: Quote ownership, UUID, changed route/vehicle and expiration are enforced by real PostgreSQL
+PASS 3: Quote expiry is checked after PostgreSQL row-lock acquisition
+PASS 4: Eight concurrent bookings commit one trip and one outbox event; retry after expiry returns the same trip; tripId=4ee79623-a4f4-4814-ac37-517551333843
+PASS 5: Locked price survives completion, payment, notification and broker redelivery; paymentId=85cc42cc-cc78-4f74-a98f-21cd5ad84bc9; amount=29000
+PASS 6: CAR_4_SEAT price and matching preserve the vehicle type after driver rejection; fare=44000; tripId=b167f4ad-0f13-4ce8-b250-36afcdd3e051
+PASS 7: CAR_7_SEAT price and matching preserve the vehicle type; fare=54000; tripId=6338d235-d0bb-4a0f-b3cb-a3d9fe3cff03
+Waiting for the production surge worker (45s cycle).
+PASS 8: Production background worker uses Redis GEO and real demand; excludes other vehicle/status/distant trips; demand=6; supply=2; multiplier=2; Redis TTL=119s
+PASS 9: Demand with zero available motorcycles uses the configured surge ceiling
+PASS 10: Surge returns to 1x after the waiting demand clears
+RESULT: 10 checks PASS; evidence=docs\evidence\dynamic-pricing

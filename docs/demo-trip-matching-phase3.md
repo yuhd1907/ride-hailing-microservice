@@ -33,8 +33,8 @@ và log, không giữ database. Cần các image hạ tầng đã có sẵn và 
 
 | Bước | Hành động qua Gateway | Điểm cần chỉ ra |
 | --- | --- | --- |
-| 1 | Hành khách `POST /trips/estimate` với pickup/destination | Khoảng cách, giá VND, `haversine-v1`; gọi lại vẫn cùng giá |
-| 2 | `POST /trips`, cố gửi giá 1 VND | Trip lưu giá server; `passengerId` lấy từ JWT |
+| 1 | Hành khách `POST /trips/estimate` với pickup/destination | Km, phút, giá VND, `dynamic-v1`, `quoteId`, hạn giữ giá và lý do tăng giá |
+| 2 | `POST /trips` với quoteId, cố gửi giá 1 VND | Trip lưu đúng giá quote; `passengerId` lấy từ JWT |
 | 3 | Chờ `GET /trips/{id}` là `AWAITING_DRIVER` | A gần nhất, Driver A là `RESERVED` |
 | 4 | A `POST /trips/{id}/reject` | A `AVAILABLE` ngay; Trip về `MATCHING`; RabbitMQ có `trip.driver_rejected` |
 | 5 | Chờ lại `AWAITING_DRIVER` | B được giao; A không được chọn lại dù gần hơn |

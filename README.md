@@ -281,6 +281,8 @@ node scripts/check-circuit-breaker.js
 
 ## Tài liệu và vận hành
 
+- [Giá động, khóa báo giá và cấu hình Routes/Weather](docs/dynamic-pricing.md)
+
 - [Quy ước code](docs/CODE_STYLE.md)
 - [Quy ước commit](docs/COMMIT_CONVENTION.md)
 - Xem log: `docker compose -f deploy/docker-compose.yml --env-file .env logs -f api_gateway user_service driver_service_1 trip_service matching_service`.
