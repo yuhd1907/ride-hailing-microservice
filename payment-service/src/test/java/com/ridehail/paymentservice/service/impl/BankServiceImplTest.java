@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.ridehail.paymentservice.dto.response.BankAccountResponse;
 import com.ridehail.paymentservice.entity.BankAccount;
 import com.ridehail.paymentservice.entity.BankTransaction;
 import com.ridehail.paymentservice.entity.BankTransactionType;
@@ -141,6 +142,11 @@ class BankServiceImplTest {
         assertNull(outcome.hold());
         verify(this.holds, never()).save(any());
         verify(this.transactions, never()).save(any());
+        // Lần giao lại sau (eventId mới) thấy chuyến đã đóng, không khoá lại hay phát
+        // thêm event
+        ArgumentCaptor<ClosedTrip> closed = ArgumentCaptor.forClass(ClosedTrip.class);
+        verify(this.closedTrips).save(closed.capture());
+        assertEquals("INSUFFICIENT_FUNDS", closed.getValue().getReason());
     }
 
     @Test
@@ -287,9 +293,47 @@ class BankServiceImplTest {
 
         assertEquals(0, new BigDecimal("2000000").compareTo(account.getBalance()));
         BankTransaction tx = savedTransaction();
-        assertEquals(BankTransactionType.ADJUST, tx.getType());
+        assertEquals(BankTransactionType.ADJUST_UP, tx.getType());
         assertEquals(0, new BigDecimal("1700000").compareTo(tx.getAmount()));
         assertThrows(IllegalArgumentException.class, () -> this.service.setBalance(USER, new BigDecimal("-1")));
+        assertThrows(IllegalArgumentException.class,
+                () -> this.service.setBalance(USER, new BigDecimal("1000000000.01")));
+    }
+
+    @Test
+    void lowerBalanceIsRecordedAsAdjustDown() {
+        lockedAccount("2000000", "0");
+
+        this.service.setBalance(USER, new BigDecimal("500000"));
+
+        BankTransaction tx = savedTransaction();
+        assertEquals(BankTransactionType.ADJUST_DOWN, tx.getType());
+        assertEquals(0, new BigDecimal("1500000").compareTo(tx.getAmount()));
+    }
+
+    @Test
+    void accountReadsWithoutLockingOrCreating() {
+        when(this.accounts.findById(USER)).thenReturn(Optional.empty());
+
+        BankAccountResponse fresh = this.service.account(USER);
+
+        assertEquals(0, INITIAL.compareTo(fresh.balance()));
+        assertEquals(0, INITIAL.compareTo(fresh.available()));
+        verify(this.accounts, never()).insertIfAbsent(any(), any());
+        verify(this.accounts, never()).findForUpdate(any());
+
+        when(this.accounts.findById(USER)).thenReturn(Optional.of(new BankAccount(USER, new BigDecimal("300000"))));
+        when(this.holds.sumHeldByUserId(USER)).thenReturn(new BigDecimal("100000"));
+        assertEquals(0, new BigDecimal("200000").compareTo(this.service.account(USER).available()));
+    }
+
+    @Test
+    void newLedgerRowsAreInsertedWithoutMergeSelect() {
+        // isNew() == true để save() chạy INSERT thẳng, không SELECT trước như merge()
+        assertTrue(heldHold("1000").isNew());
+        assertTrue(new BankTransaction(USER, BankTransactionType.TOPUP, BigDecimal.TEN, null, BigDecimal.TEN,
+                BigDecimal.TEN)
+            .isNew());
     }
 
     @Test

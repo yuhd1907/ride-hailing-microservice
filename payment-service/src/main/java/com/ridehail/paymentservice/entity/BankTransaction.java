@@ -9,15 +9,18 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.domain.Persistable;
 
 /**
  * Một dòng lịch sử của tài khoản ngân hàng ảo, kèm số dư và số dư khả dụng sau giao dịch.
  */
 @Entity
 @Table(name = "bank_transactions")
-public class BankTransaction {
+public class BankTransaction implements Persistable<UUID> {
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -27,7 +30,7 @@ public class BankTransaction {
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "type", length = 10, nullable = false, updatable = false)
+    @Column(name = "type", length = 20, nullable = false, updatable = false)
     private BankTransactionType type;
 
     @Column(name = "amount", nullable = false, updatable = false, precision = 12, scale = 2)
@@ -46,7 +49,24 @@ public class BankTransaction {
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamptz")
     private Instant createdAt;
 
+    /**
+     * Dòng mới luôn INSERT thẳng (ID tự gán bằng UUID), không SELECT trước như merge().
+     */
+    @Transient
+    private boolean isNew = true;
+
     protected BankTransaction() {
+        this.isNew = false;
+    }
+
+    @PostPersist
+    void markPersisted() {
+        this.isNew = false;
+    }
+
+    @Override
+    public boolean isNew() {
+        return this.isNew;
     }
 
     public BankTransaction(UUID userId, BankTransactionType type, BigDecimal amount, UUID tripId,
@@ -60,6 +80,7 @@ public class BankTransaction {
         this.availableAfter = availableAfter;
     }
 
+    @Override
     public UUID getId() {
         return this.id;
     }

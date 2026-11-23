@@ -43,6 +43,8 @@ public class BankServiceImpl implements BankService {
 
     static final BigDecimal MAX_TOP_UP = new BigDecimal("5000000");
 
+    static final BigDecimal MAX_BALANCE = new BigDecimal("1000000000");
+
     private static final int EXPIRY_BATCH = 100;
 
     private static final int MAX_LIMIT = 100;
@@ -88,6 +90,9 @@ public class BankServiceImpl implements BankService {
         BigDecimal available = available(account);
         if (available.compareTo(amount) < 0) {
             log.info("Không đủ số dư để khoá {}: khả dụng {}", amount, available);
+            // Ghi nhận để một lần giao lại trip.requested (eventId mới) không khoá lại
+            // hay phát thêm event
+            recordClosed(tripId, "INSUFFICIENT_FUNDS");
             return new HoldOutcome(HoldOutcome.Decision.INSUFFICIENT_FUNDS, null);
         }
         FundHold hold = new FundHold(tripId, userId, amount, Instant.now().plus(this.holdTtl));
@@ -153,9 +158,14 @@ public class BankServiceImpl implements BankService {
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public BankAccountResponse account(UUID userId) {
-        return toResponse(lockAccount(userId));
+        // Chỉ đọc: không tạo tài khoản, không khoá dòng. Khách chưa có tài khoản thấy số
+        // dư khởi tạo.
+        return this.accountRepository.findById(userId)
+            .map(this::toResponse)
+            .orElseGet(
+                    () -> new BankAccountResponse(userId, this.initialBalance, BigDecimal.ZERO, this.initialBalance));
     }
 
     @Override
@@ -184,14 +194,16 @@ public class BankServiceImpl implements BankService {
     @Override
     @Transactional
     public BankAccountResponse setBalance(UUID userId, BigDecimal balance) {
-        if (balance == null || balance.signum() < 0) {
-            throw new IllegalArgumentException("Số dư phải >= 0");
+        if (balance == null || balance.signum() < 0 || balance.compareTo(MAX_BALANCE) > 0) {
+            throw new IllegalArgumentException("Số dư phải từ 0 đến 1.000.000.000 VND");
         }
         BankAccount account = lockAccount(userId);
         BigDecimal delta = balance.subtract(account.getBalance());
         account.changeBalanceTo(balance);
         if (delta.signum() != 0) {
-            record(account, BankTransactionType.ADJUST, delta.abs(), null, available(account));
+            BankTransactionType type = (delta.signum() > 0) ? BankTransactionType.ADJUST_UP
+                    : BankTransactionType.ADJUST_DOWN;
+            record(account, type, delta.abs(), null, available(account));
         }
         return toResponse(account);
     }

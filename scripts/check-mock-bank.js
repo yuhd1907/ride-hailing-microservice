@@ -131,11 +131,19 @@ async function main() {
   const [pending] = await waitFor('payment tiền mặt', async () => { const list = await paymentsOf(cashTrip); return list.length && list; });
   check(pending.status === 'PENDING' && pending.method === 'CASH', 'trip.completed CASH → payment PENDING, chờ tài xế');
   check((await cashConfirm(cashTrip, uuid())).status === 403, 'Tài xế khác xác nhận tiền mặt → 403');
-  const confirmed = await cashConfirm(cashTrip, driverId);
-  const again = await cashConfirm(cashTrip, driverId);
+  // Tài xế bấm "Đã nhận tiền mặt" hai lần cùng lúc: dòng payment bị khoá nên chỉ một lần phát event
+  const [confirmed, again] = await Promise.all([cashConfirm(cashTrip, driverId), cashConfirm(cashTrip, driverId)]);
   await waitFor('payment.succeeded của chuyến tiền mặt', () => eventsFor(cashTrip, 'payment.succeeded').length > 0);
-  check(confirmed.status === 200 && confirmed.body.status === 'SUCCESS' && again.status === 200 && (await paymentsOf(cashTrip)).length === 1, 'Đúng tài xế xác nhận → SUCCESS; gọi lại vẫn 200 và chỉ một payment');
+  await sleep(3000);
+  check(confirmed.status === 200 && confirmed.body.status === 'SUCCESS' && again.status === 200 && (await paymentsOf(cashTrip)).length === 1, 'Đúng tài xế bấm xác nhận hai lần cùng lúc → cả hai 200, SUCCESS, chỉ một payment');
   check(eventsFor(cashTrip, 'payment.succeeded').length === 1 && eventsFor(cashTrip, 'payment.succeeded')[0].payload.paymentMethod === 'CASH', 'payment.succeeded phát đúng một lần, paymentMethod CASH');
+
+  // 7. API nội bộ đặt số dư (script kiểm thử dùng): ghi chiều tăng/giảm, chặn giá trị quá lớn
+  const adjusted = uuid();
+  const setBalance = async amount => (await fetch(`${PAYMENT}/internal/payments/bank/accounts/${adjusted}/balance?amount=${amount}`, { method: 'PUT' })).status;
+  const statuses = [await setBalance(2000000), await setBalance(500000), await setBalance('1000000000.01')];
+  const types = (await db.query('SELECT type FROM bank_transactions WHERE user_id = $1 ORDER BY created_at', [adjusted])).rows.map(r => r.type);
+  check(statuses.join() === '200,200,400' && types.join() === 'ADJUST_UP,ADJUST_DOWN', `Đặt số dư tăng rồi giảm → ${statuses.join(', ')}; giao dịch ${types.join(', ')}`);
 
   console.log(`RESULT: ${passed} mock bank checks PASS`);
 }

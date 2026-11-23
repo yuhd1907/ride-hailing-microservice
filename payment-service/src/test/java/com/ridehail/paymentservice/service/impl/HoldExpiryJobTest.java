@@ -32,9 +32,7 @@ class HoldExpiryJobTest {
 
         new HoldExpiryJob(this.bankService).expire();
 
-        // Mỗi chuyến một lời gọi release (transaction riêng qua proxy); một khoản lỗi
-        // không chặn
-        // các khoản còn lại.
+        // Mỗi chuyến một transaction; khoản lỗi không chặn các khoản khác
         verify(this.bankService).release(first);
         verify(this.bankService).release(broken);
         verify(this.bankService).release(last);

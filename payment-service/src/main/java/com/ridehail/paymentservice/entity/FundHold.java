@@ -9,9 +9,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.springframework.data.domain.Persistable;
 
 /**
  * Khoản tiền tạm khoá khi đặt chuyến trả bằng ngân hàng. Kết thúc chuyến thì CAPTURED,
@@ -19,7 +22,7 @@ import org.hibernate.annotations.UpdateTimestamp;
  */
 @Entity
 @Table(name = "fund_holds")
-public class FundHold {
+public class FundHold implements Persistable<UUID> {
 
     @Id
     @Column(name = "hold_id", nullable = false, updatable = false)
@@ -49,7 +52,24 @@ public class FundHold {
     @Column(name = "updated_at", nullable = false, columnDefinition = "timestamptz")
     private Instant updatedAt;
 
+    /**
+     * Dòng mới luôn INSERT thẳng (ID tự gán bằng UUID), không SELECT trước như merge().
+     */
+    @Transient
+    private boolean isNew = true;
+
     protected FundHold() {
+        this.isNew = false;
+    }
+
+    @PostPersist
+    void markPersisted() {
+        this.isNew = false;
+    }
+
+    @Override
+    public boolean isNew() {
+        return this.isNew;
     }
 
     public FundHold(UUID tripId, UUID userId, BigDecimal amount, Instant expiresAt) {
@@ -69,6 +89,7 @@ public class FundHold {
         this.status = HoldStatus.RELEASED;
     }
 
+    @Override
     public UUID getId() {
         return this.id;
     }

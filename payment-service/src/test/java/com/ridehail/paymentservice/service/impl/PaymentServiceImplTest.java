@@ -165,7 +165,7 @@ class PaymentServiceImplTest {
     @Test
     void onlyAssignedDriverConfirmsCashOnce() {
         Payment payment = cashPayment();
-        when(this.paymentRepository.findByIdempotencyKey(TRIP_ID)).thenReturn(Optional.of(payment));
+        when(this.paymentRepository.findForUpdateByIdempotencyKey(TRIP_ID)).thenReturn(Optional.of(payment));
 
         assertThrows(ForbiddenException.class, () -> this.service.confirmCash(TRIP_ID, UUID.randomUUID()));
 
@@ -183,11 +183,11 @@ class PaymentServiceImplTest {
     @Test
     void confirmCashOnBankPaymentConflicts() {
         Payment bank = new Payment(TRIP_ID, RIDER_ID, DRIVER_ID, FARE, TRIP_ID, "corr-1", PaymentMethod.BANK);
-        when(this.paymentRepository.findByIdempotencyKey(TRIP_ID)).thenReturn(Optional.of(bank));
+        when(this.paymentRepository.findForUpdateByIdempotencyKey(TRIP_ID)).thenReturn(Optional.of(bank));
         assertThrows(ConflictException.class, () -> this.service.confirmCash(TRIP_ID, DRIVER_ID));
 
         UUID unknownTrip = UUID.randomUUID();
-        when(this.paymentRepository.findByIdempotencyKey(unknownTrip)).thenReturn(Optional.empty());
+        when(this.paymentRepository.findForUpdateByIdempotencyKey(unknownTrip)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> this.service.confirmCash(unknownTrip, DRIVER_ID));
     }
 

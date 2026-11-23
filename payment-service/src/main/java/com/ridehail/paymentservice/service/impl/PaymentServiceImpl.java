@@ -74,8 +74,8 @@ public class PaymentServiceImpl implements PaymentService {
             this.processedEventRepository.save(new ProcessedEvent(envelope.eventId(), envelope.eventType()));
             return;
         }
-        // 3. Lỗi tạm thời giả lập ném exception để listener retry; transaction rollback
-        // nên
+        // 3. Lỗi tạm thời giả lập ném exception để listener retry; rollback nên chưa ghi
+        // gì
         // chưa có gì được ghi.
         this.faultInjector.beforeExternalCall("ngân hàng");
         UUID riderId = payload.resolvedRiderId();
@@ -118,7 +118,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentResponse confirmCash(UUID tripId, UUID driverId) {
-        Payment payment = this.paymentRepository.findByIdempotencyKey(tripId)
+        Payment payment = this.paymentRepository.findForUpdateByIdempotencyKey(tripId)
             .orElseThrow(() -> new ResourceNotFoundException("Chuyến " + tripId + " chưa có payment"));
         if (!driverId.equals(payment.getDriverId())) {
             throw new ForbiddenException("Chỉ tài xế của chuyến mới xác nhận được tiền mặt");
