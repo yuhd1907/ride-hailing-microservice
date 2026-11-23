@@ -22,7 +22,7 @@ export default function PassengerPage() {
     <>
       <PageHeader
         title="Hành khách"
-        description="Ước tính giá, tìm tài xế gần, đặt chuyến và theo dõi vòng đời chuyến. Giá do server tính (haversine-v1: 12.000 ₫ + 10.000 ₫/km, làm tròn lên 1.000 ₫)."
+        description="Ước tính giá, tìm tài xế gần, đặt chuyến và theo dõi vòng đời chuyến. Giá do server tính (dynamic-v1: theo loại xe, km, phút, giờ cao điểm và cầu/cung, làm tròn lên 1.000 ₫)."
       />
       {mounted && !isPassenger(session?.roles) && (
         <div className="mb-4">

@@ -1,7 +1,8 @@
 'use strict';
-// Loại xe, bảng giá fare_rates và các API đọc mà web RideFlow cần:
+// Loại xe và các API mà web RideFlow cần, trên nền dynamic pricing (pricing.js):
 // GET /trips/fare-rates, POST /trips/estimate (options), POST /trips (vehicleType),
 // GET /trips/me, GET /trips/{id}/history; Matching chỉ ghép tài xế đúng loại xe.
+// Công thức giá, khóa quote và SQL của pricing được kiểm thử ở dynamic-pricing.test.js.
 // Chạy: node --test scripts/trip-vehicle-fare.test.js (không cần Docker).
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -11,6 +12,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const uuid = () => crypto.randomUUID();
 const fare = require('../trip-service/src/fare');
+const { createPricing } = require('../trip-service/src/pricing');
+const { PGlite } = require('../trip-service/node_modules/@electric-sql/pglite');
 
 function load(service, file, mocks = {}) {
   const filename = path.resolve(__dirname, '..', service, 'src', file);
@@ -20,21 +23,8 @@ function load(service, file, mocks = {}) {
   return mod.exports;
 }
 
-const A = { lat: 0, lng: 0 };
-const B = { lat: 1, lng: 0 }; // 111,19 km
-
-test('fare: mỗi loại xe một giá; xe máy giữ đúng công thức cũ; loại xe sai bị từ chối', () => {
-  const quote = fare.estimate(A, B);
-  assert.equal(quote.vehicleType, 'MOTORCYCLE');
-  assert.equal(quote.estimatedDistance, 111.19);
-  assert.equal(quote.fareAmount, 1124000);
-  assert.deepEqual(quote.options.map(o => [o.vehicleType, o.fareAmount, o.seats]), [['MOTORCYCLE', 1124000, 1], ['CAR_4_SEAT', 1688000, 4], ['CAR_7_SEAT', 2027000, 7]]);
-  assert.ok(quote.options.every(o => o.displayName && o.currency === 'VND' && o.estimatedDistance === 111.19));
-  assert.equal(fare.estimate(A, B, fare.DEFAULT_RATES, 'CAR_7_SEAT').fareAmount, 2027000);
-  assert.throws(() => fare.estimate(A, B, fare.DEFAULT_RATES, 'BUS'), { status: 400 });
-  const cheaper = fare.DEFAULT_RATES.map(r => (r.vehicleType === 'CAR_4_SEAT' ? { ...r, baseFare: 0, perKm: 1000 } : r));
-  assert.equal(fare.estimate(A, B, cheaper, 'CAR_4_SEAT').fareAmount, 112000);
-});
+const pickup = { lat: 10.77, lng: 106.7, address: '1 Lê Lợi, Quận 1' };
+const destination = { lat: 10.78, lng: 106.71, address: '2 Hàm Nghi' };
 
 test('fare.point chỉ giữ lat, lng và địa chỉ đã làm sạch', () => {
   assert.deepEqual(fare.point({ lat: 10.5, lng: 106.7, address: '  12 Lê Lợi\u0000\n Q1  ', evil: 'x' }), { lat: 10.5, lng: 106.7, address: '12 Lê Lợi Q1' });
@@ -44,23 +34,55 @@ test('fare.point chỉ giữ lat, lng và địa chỉ đã làm sạch', () => 
   assert.throws(() => fare.point({ lat: 91, lng: 0 }), { status: 400 });
 });
 
-test('rates: đọc bảng fare_rates, đổi kiểu số, cache 30 giây, bảng trống hoặc dòng lạ thì dùng giá mặc định', async () => {
-  let clock = 0, queries = 0, rows = [{ vehicleType: 'CAR_4_SEAT', displayName: 'Ô tô 4 chỗ', seats: 4, baseFare: '21000.00', perKm: '16000.00' }];
-  const db = { query: async () => { queries++; return { rows }; } };
-  const rates = require('../trip-service/src/rates')(db, { now: () => clock });
-  assert.deepEqual(await rates.list(), [{ vehicleType: 'CAR_4_SEAT', displayName: 'Ô tô 4 chỗ', seats: 4, baseFare: 21000, perKm: 16000 }]);
-  clock = 29999;
-  await rates.list();
-  assert.equal(queries, 1);
-  clock = 30000;
-  rows = [];
-  assert.deepEqual(await rates.list(), fare.DEFAULT_RATES);
-  assert.equal(queries, 2);
-  const junk = require('../trip-service/src/rates')({ query: async () => ({ rows: [{ tripId: uuid(), status: 'REQUESTED' }] }) });
-  assert.deepEqual(await junk.list(), fare.DEFAULT_RATES);
+test('pricing: volume cũ có fare_rates của rates.js được đổi tên; bảng giá web lấy từ fare_rates mới', async t => {
+  // PGlite chạy PostgreSQL thật trong WASM, như dynamic-pricing.test.js.
+  const pg = new PGlite();
+  t.after(() => pg.close());
+  await pg.exec(fs.readFileSync(path.resolve(__dirname, '../trip-service/trip_db.sql'), 'utf8'));
+  // Cấu trúc mà rates.js (đã bỏ khi gộp dynamic pricing) tạo trên volume cũ.
+  await pg.exec(`CREATE TABLE fare_rates ("vehicleType" VARCHAR(20) PRIMARY KEY, "displayName" VARCHAR(50) NOT NULL, seats INTEGER NOT NULL,
+      "baseFare" NUMERIC(12, 2) NOT NULL, "perKm" NUMERIC(12, 2) NOT NULL, "sortOrder" INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO fare_rates VALUES ('MOTORCYCLE', 'Xe máy', 1, 12000, 10000, 0);
+    ALTER TABLE trips ADD COLUMN IF NOT EXISTS "vehicleType" VARCHAR(20) NOT NULL DEFAULT 'MOTORCYCLE';`);
+  const db = { query: async (sql, args) => (args === undefined && sql.includes(';') ? (await pg.exec(sql)).at(-1) : pg.query(sql, args)) };
+  const providers = { route: async () => ({ distanceKm: 5, durationMinutes: 10, source: 'google_routes_traffic' }), weather: async () => ({ raining: false, status: 'disabled' }) };
+  const pricing = createPricing({ db, cache: { isReady: false }, driver: {}, providers });
+  await pricing.initialize();
+  await pricing.initialize(); // Khởi động lại không đổi tên lần nữa.
+  const legacy = await pg.query('SELECT "vehicleType" FROM fare_rates_legacy');
+  assert.deepEqual(legacy.rows, [{ vehicleType: 'MOTORCYCLE' }], 'dữ liệu cũ được giữ trong fare_rates_legacy');
+  assert.deepEqual(await pricing.rates(), [
+    { vehicleType: 'MOTORCYCLE', displayName: 'Xe máy', seats: 1, baseFare: 12000, perKm: 10000, perMinute: 300, minimumFare: 12000 },
+    { vehicleType: 'CAR_4_SEAT', displayName: 'Ô tô 4 chỗ', seats: 4, baseFare: 20000, perKm: 14000, perMinute: 500, minimumFare: 25000 },
+    { vehicleType: 'CAR_7_SEAT', displayName: 'Ô tô 7 chỗ', seats: 7, baseFare: 25000, perKm: 17000, perMinute: 600, minimumFare: 30000 },
+  ]);
+  const car = await pricing.quote(uuid(), { pickup, destination, vehicleType: 'CAR_4_SEAT' });
+  assert.equal(car.vehicleType, 'CAR_4_SEAT');
+  assert.ok(car.quoteId && car.fareAmount > 0);
+  await assert.rejects(pricing.quote(uuid(), { pickup, destination, vehicleType: 'BUS' }), { status: 400 });
 });
 
-async function tripHarness(rateList = fare.DEFAULT_RATES) {
+// Giả lập pricing.js theo đúng giao diện quote/lockQuote/rates, giá cố định theo loại xe,
+// để kiểm thử phần route của Trip mà không cần PostgreSQL.
+const PRICES = { MOTORCYCLE: 48000, CAR_4_SEAT: 72000, CAR_7_SEAT: 90000 };
+const RATES = fare.VEHICLES.map(v => ({ ...v, baseFare: 1, perKm: 2, perMinute: 3, minimumFare: 4 }));
+function fakePricing() {
+  const quotes = new Map(), bodies = [];
+  return {
+    bodies,
+    async quote(owner, body) {
+      bodies.push(body);
+      const vehicleType = body.vehicleType ?? 'MOTORCYCLE';
+      const snapshot = { quoteId: uuid(), pickup: body.pickup, destination: body.destination, vehicleType, estimatedDistance: 1.5, estimatedDuration: 6, fareAmount: PRICES[vehicleType], currency: 'VND', pricingVersion: 'dynamic-v1' };
+      quotes.set(snapshot.quoteId, snapshot);
+      return snapshot;
+    },
+    async lockQuote(client, quoteId) { return { snapshot: quotes.get(quoteId) }; },
+    async rates() { return RATES; },
+  };
+}
+
+async function tripHarness() {
   const express = require('../trip-service/node_modules/express');
   const trips = new Map(), history = [], outbox = [], driverCalls = [];
   let tick = 0;
@@ -79,6 +101,7 @@ async function tripHarness(rateList = fare.DEFAULT_RATES) {
       history.push(args.length === 3 ? { tripId, previousStatus: null, status: a, reason: b, createdAt: stamp() } : { tripId, previousStatus: a, status: b, reason: c, createdAt: stamp() });
       return { rows: [], rowCount: 1 };
     }
+    if (sql.startsWith('UPDATE fare_quotes')) return { rows: [], rowCount: 1 };
     if (sql.startsWith('UPDATE trips')) {
       const trip = trips.get(args[0]);
       if (trip.version !== args[4]) return { rows: [], rowCount: 0 };
@@ -108,7 +131,8 @@ async function tripHarness(rateList = fare.DEFAULT_RATES) {
   };
   const driver = { request: async (...args) => driverCalls.push(args), release: async () => {} };
   const saga = load('trip-service', 'saga.js', { './events': events, './service-client': driver, './logger': () => {} });
-  const routes = load('trip-service', 'routes.js', { './db': client, './events': events, './saga': saga, './service-client': driver, './rates': () => ({ list: async () => rateList }) });
+  const pricing = fakePricing();
+  const routes = load('trip-service', 'routes.js', { './db': client, './events': events, './saga': saga, './service-client': driver, './pricing': pricing });
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => { req.correlationId = uuid(); next(); });
@@ -124,50 +148,59 @@ async function tripHarness(rateList = fare.DEFAULT_RATES) {
     });
     return { status: response.status, data: await response.json() };
   };
-  return { trips, history, outbox, driverCalls, call, close: () => new Promise(resolve => server.close(resolve)) };
+  return { trips, history, outbox, driverCalls, pricing, call, close: () => new Promise(resolve => server.close(resolve)) };
 }
 
 const passenger = () => ({ id: uuid(), role: 'ROLE_PASSENGER' });
 const driverActor = () => ({ id: uuid(), role: 'ROLE_DRIVER' });
-const pickup = { lat: 10.77, lng: 106.7, address: '1 Lê Lợi, Quận 1' };
-const destination = { lat: 10.78, lng: 106.71, address: '2 Hàm Nghi' };
 
 test('HTTP: bảng giá và báo giá theo loại xe', async () => {
-  const custom = [{ vehicleType: 'MOTORCYCLE', displayName: 'Xe máy', seats: 1, baseFare: 15000, perKm: 10000 }, { vehicleType: 'CAR_4_SEAT', displayName: 'Ô tô 4 chỗ', seats: 4, baseFare: 30000, perKm: 20000 }];
-  const h = await tripHarness(custom);
+  const h = await tripHarness();
   const rider = passenger();
   try {
     assert.equal((await h.call('/trips/fare-rates', null)).status, 401);
     const rates = await h.call('/trips/fare-rates', rider);
     assert.equal(rates.status, 200);
-    assert.deepEqual(rates.data, custom);
+    assert.deepEqual(rates.data, RATES);
     assert.equal((await h.call('/trips/fare-rates', driverActor())).status, 200);
-    const quote = await h.call('/trips/estimate', rider, { pickup: A, destination: B });
+    // Không có vehicleType: mỗi loại xe một quote trong options; phần ngoài là quote xe máy.
+    const quote = await h.call('/trips/estimate', rider, { pickup: { ...pickup, address: '  1 Lê Lợi,\n Quận 1 ', evil: 'x' }, destination });
     assert.equal(quote.status, 200);
-    assert.deepEqual(quote.data.options.map(o => [o.vehicleType, o.fareAmount]), [['MOTORCYCLE', 1127000], ['CAR_4_SEAT', 2254000]]);
-    assert.equal(quote.data.fareAmount, 1127000);
-    assert.equal((await h.call('/trips/estimate', rider, { pickup: A, destination: B, vehicleType: 'CAR_4_SEAT' })).data.fareAmount, 2254000);
-    assert.equal((await h.call('/trips/estimate', rider, { pickup: A, destination: B, vehicleType: 'CAR_7_SEAT' })).status, 400);
+    assert.deepEqual(quote.data.options.map(o => [o.vehicleType, o.fareAmount, o.seats, o.displayName]), [['MOTORCYCLE', 48000, 1, 'Xe máy'], ['CAR_4_SEAT', 72000, 4, 'Ô tô 4 chỗ'], ['CAR_7_SEAT', 90000, 7, 'Ô tô 7 chỗ']]);
+    assert.equal(new Set(quote.data.options.map(o => o.quoteId)).size, 3);
+    assert.equal(quote.data.vehicleType, 'MOTORCYCLE');
+    assert.equal(quote.data.quoteId, quote.data.options[0].quoteId);
+    assert.ok(h.pricing.bodies.every(b => JSON.stringify(b.pickup) === JSON.stringify(pickup)), 'quote chỉ nhận tọa độ và địa chỉ đã làm sạch');
+    // Có vehicleType: một quote, không kèm options.
+    const car = await h.call('/trips/estimate', rider, { pickup, destination, vehicleType: 'CAR_4_SEAT' });
+    assert.equal(car.data.fareAmount, 72000);
+    assert.equal(car.data.options, undefined);
+    assert.equal((await h.call('/trips/estimate', rider, { pickup: { lat: 91, lng: 0 }, destination })).status, 400);
   } finally { await h.close(); }
 });
 
-test('HTTP: đặt chuyến lưu loại xe, giá đúng loại xe, địa chỉ đã làm sạch và phát vehicleType', async () => {
+test('HTTP: đặt chuyến lưu loại xe, giá do server báo, địa chỉ đã làm sạch và phát vehicleType', async () => {
   const h = await tripHarness();
   const rider = passenger();
   try {
     const car = await h.call('/trips', rider, { pickup: { ...pickup, extra: 'x' }, destination, vehicleType: 'CAR_4_SEAT', fareAmount: 1 });
     assert.equal(car.status, 201);
-    const expected = fare.estimate(pickup, destination, fare.DEFAULT_RATES, 'CAR_4_SEAT');
     assert.equal(car.data.vehicleType, 'CAR_4_SEAT');
-    assert.equal(car.data.fare, expected.fareAmount);
+    assert.equal(car.data.fare, PRICES.CAR_4_SEAT);
     assert.deepEqual(car.data.pickup, pickup);
     const requested = h.outbox.find(e => e.eventType === 'trip.requested' && e.payload.tripId === car.data.tripId);
     assert.equal(requested.payload.vehicleType, 'CAR_4_SEAT');
-    assert.equal(requested.payload.fareAmount, expected.fareAmount);
+    assert.equal(requested.payload.fareAmount, PRICES.CAR_4_SEAT);
     const bike = await h.call('/trips', rider, { pickup, destination });
     assert.equal(bike.data.vehicleType, 'MOTORCYCLE');
-    assert.equal(bike.data.fare, fare.estimate(pickup, destination).fareAmount);
-    assert.equal((await h.call('/trips', rider, { pickup, destination, vehicleType: 'BUS' })).status, 400);
+    assert.equal(bike.data.fare, PRICES.MOTORCYCLE);
+    // Đặt bằng quoteId đã hiển thị: dùng đúng quote đó, không báo giá lại.
+    const quoted = (await h.call('/trips/estimate', rider, { pickup, destination, vehicleType: 'CAR_7_SEAT' })).data;
+    const quoteCount = h.pricing.bodies.length;
+    const locked = await h.call('/trips', rider, { quoteId: quoted.quoteId });
+    assert.equal(locked.status, 201);
+    assert.deepEqual([locked.data.vehicleType, locked.data.fare], ['CAR_7_SEAT', PRICES.CAR_7_SEAT]);
+    assert.equal(h.pricing.bodies.length, quoteCount);
   } finally { await h.close(); }
 });
 

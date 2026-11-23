@@ -1,0 +1,3 @@
+Dynamic pricing integration: 2026-11-23T08:16:24.596Z; Docker Compose; real HTTP, PostgreSQL, Redis, RabbitMQ and Java services
+PASS 1: Quote expiry is checked after PostgreSQL row-lock acquisition
+RESULT: 1 checks PASS; evidence=docs\evidence\dynamic-pricing

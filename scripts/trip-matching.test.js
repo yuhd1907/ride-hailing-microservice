@@ -235,6 +235,7 @@ test('HTTP create prices on server; complete ignores client fare and is idempote
     return { rows: [] };
   } };
   const routes = load('trip-service', 'routes.js', {
+    './pricing': require('./helpers/pricing-stub')(),
     './db': client,
     './events': { transaction: async work => { const result = await work(client); order.push('COMMIT'); return result; }, enqueue: async (client, type, payload, correlationId) => { outbox.push({ type, payload, correlationId }); order.push('OUTBOX'); } },
     './saga': { history: async (client, row, status) => { trip.status = status; return { ...trip }; } },
@@ -412,6 +413,22 @@ test('no available driver on initial request produces one terminal failure', asy
   assert.equal(h.outbox[0].eventType, 'matching.failed');
 });
 
+test('matching preserves quoted vehicle type through initial assignment and rejection', async () => {
+  const requested = requestedEvent(), motorcycle = id(), carA = id(), carB = id();
+  requested.payload.vehicleType = 'CAR_4_SEAT';
+  const h = matchingHarness(() => [{ id: motorcycle, vehicleType: 'MOTORCYCLE' }, { id: id(), vehicleType: 'CAR_7_SEAT' }, { id: carA, vehicleType: 'CAR_4_SEAT' }, { id: carB, vehicleType: 'CAR_4_SEAT' }]);
+  await h.matching.handle(requested);
+  assert.equal(h.row.selectedDriverId, carA);
+  const rejected = rejection(requested, carA);
+  rejected.payload.vehicleType = 'CAR_4_SEAT';
+  await h.matching.rejected(rejected);
+  assert.equal(h.row.selectedDriverId, carB);
+  for (const service of ['trip-service', 'matching-service']) {
+    const { validate, InvalidEvent } = require(`../${service}/src/validation`);
+    assert.throws(() => validate({ ...requested, payload: { ...requested.payload, vehicleType: 'TRUCK' } }, 'trip.requested'), InvalidEvent);
+  }
+});
+
 test('HTTP reject: only the assigned driver, only while awaiting driver, one event', async () => {
   const driverId = id(), sagaId = id();
   const trip = { tripId: id(), passengerId: id(), driverId, pickup: { lat: 10.77, lng: 106.7 }, fare: '125000.00', sagaId, status: 'AWAITING_DRIVER', paymentId: null };
@@ -455,7 +472,7 @@ test('HTTP reject: only the assigned driver, only while awaiting driver, one eve
     assert.equal(outbox[0].type, 'trip.driver_rejected');
     assert.equal(outbox[0].correlationId, sagaId);
     assert.ok(validation.utc(outbox[0].payload.rejectedAt));
-    assert.deepEqual({ ...outbox[0].payload, rejectedAt: null }, { tripId: trip.tripId, riderId: trip.passengerId, driverId, pickup: trip.pickup, rejectedAt: null });
+    assert.deepEqual({ ...outbox[0].payload, rejectedAt: null }, { tripId: trip.tripId, riderId: trip.passengerId, driverId, pickup: trip.pickup, vehicleType: 'MOTORCYCLE', rejectedAt: null });
     // Gọi lại sau khi đã từ chối, hoặc khi chuyến đã chạy: không nhả tài xế, không phát event lần nữa.
     assert.equal((await http.reject(trip.tripId, driverId)).status, 403);
     Object.assign(trip, { status: 'IN_PROGRESS', driverId });
@@ -470,7 +487,7 @@ test('end to end: rejecting driver is freed at once and the trip goes to another
   // Driver Service giả lập đúng hợp đồng available/reserve/reject của bản thật; A đứng trước nên luôn gần nhất.
   const drivers = new Map([[driverA, { status: 'AVAILABLE', tripId: null }], [driverB, { status: 'AVAILABLE', tripId: null }]]);
   const driverApi = { request: async (app, url, correlationId, body) => {
-    if (url.includes('/available')) return [...drivers].filter(([, d]) => d.status === 'AVAILABLE').map(([driverId]) => ({ id: driverId }));
+    if (url.includes('/available')) return [...drivers].filter(([, d]) => d.status === 'AVAILABLE').map(([driverId]) => ({ id: driverId, vehicleType: 'MOTORCYCLE' }));
     const [, driverId, action] = url.match(/\/internal\/drivers\/([^/]+)\/([\w-]+)$/);
     const state = drivers.get(driverId);
     if (action === 'reserve') {
