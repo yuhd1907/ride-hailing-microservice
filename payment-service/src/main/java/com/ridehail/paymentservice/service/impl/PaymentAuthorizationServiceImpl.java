@@ -7,7 +7,6 @@ import com.ridehail.paymentservice.dto.event.PaymentAuthorizationFailedPayload;
 import com.ridehail.paymentservice.dto.event.PaymentAuthorizedPayload;
 import com.ridehail.paymentservice.dto.event.TripClosedPayload;
 import com.ridehail.paymentservice.dto.event.TripRequestedPayload;
-import com.ridehail.paymentservice.entity.ClosedTrip;
 import com.ridehail.paymentservice.entity.PaymentFailureReason;
 import com.ridehail.paymentservice.entity.PaymentMethod;
 import com.ridehail.paymentservice.entity.ProcessedEvent;
@@ -29,8 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentAuthorizationServiceImpl implements PaymentAuthorizationService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentAuthorizationServiceImpl.class);
-
-    private static final int MAX_REASON_LENGTH = 40;
 
     private final BankService bankService;
 
@@ -72,6 +69,7 @@ public class PaymentAuthorizationServiceImpl implements PaymentAuthorizationServ
             switch (outcome.decision()) {
                 case HELD -> authorize(envelope, payload, riderId, PaymentMethod.BANK, outcome.hold().getId());
                 case ALREADY_HELD -> log.info("Chuyến đã được khoá tiền từ trước, không phát lại payment.authorized");
+                case TRIP_CLOSED -> log.info("Chuyến vừa bị hủy/thất bại trong lúc chờ khoá, không khoá tiền");
                 case INSUFFICIENT_FUNDS -> {
                     this.outboxWriter.enqueue(EventTypes.PAYMENT_AUTHORIZATION_FAILED, tripId, envelope.correlationId(),
                             new PaymentAuthorizationFailedPayload(tripId, riderId, payload.fareAmount(),
@@ -91,13 +89,12 @@ public class PaymentAuthorizationServiceImpl implements PaymentAuthorizationServ
             return;
         }
         UUID tripId = payload.tripId();
-        boolean released = this.bankService.release(tripId);
-        if (!released && !this.closedTripRepository.existsById(tripId)) {
-            String reason = (payload.reason() != null && !payload.reason().isBlank()) ? payload.reason()
-                    : envelope.eventType();
-            this.closedTripRepository
-                .save(new ClosedTrip(tripId, reason.substring(0, Math.min(reason.length(), MAX_REASON_LENGTH))));
-        }
+        String reason = (payload.reason() != null && !payload.reason().isBlank()) ? payload.reason()
+                : envelope.eventType();
+        // BankService khoá tài khoản của khách trước khi mở khoá hoặc ghi closed_trips,
+        // nên không
+        // chạy xen với một lần khoá tiền của cùng chuyến.
+        boolean released = this.bankService.closeTrip(tripId, payload.riderId(), reason);
         log.info("Chuyến kết thúc không hoàn thành ({}): {}", envelope.eventType(),
                 released ? "đã mở khoá tiền" : "không có khoản khoá");
         this.processedEventRepository.save(new ProcessedEvent(envelope.eventId(), envelope.eventType()));

@@ -12,10 +12,12 @@ import com.ridehail.paymentservice.dto.response.BankTransactionResponse;
 import com.ridehail.paymentservice.entity.BankAccount;
 import com.ridehail.paymentservice.entity.BankTransaction;
 import com.ridehail.paymentservice.entity.BankTransactionType;
+import com.ridehail.paymentservice.entity.ClosedTrip;
 import com.ridehail.paymentservice.entity.FundHold;
 import com.ridehail.paymentservice.entity.HoldStatus;
 import com.ridehail.paymentservice.repository.BankAccountRepository;
 import com.ridehail.paymentservice.repository.BankTransactionRepository;
+import com.ridehail.paymentservice.repository.ClosedTripRepository;
 import com.ridehail.paymentservice.repository.FundHoldRepository;
 import com.ridehail.paymentservice.service.BankService;
 import com.ridehail.paymentservice.service.CaptureOutcome;
@@ -27,6 +29,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Mọi thao tác thay đổi tiền đều khoá dòng tài khoản (FOR UPDATE) <b>trước</b> khi đọc
+ * khoản khoá, closed_trips hay tổng đang khoá. Nhờ vậy các transaction trên cùng một
+ * khách chạy tuần tự và luôn thấy kết quả đã commit của nhau.
+ */
 @Service
 public class BankServiceImpl implements BankService {
 
@@ -40,23 +47,28 @@ public class BankServiceImpl implements BankService {
 
     private static final int MAX_LIMIT = 100;
 
+    private static final int MAX_REASON_LENGTH = 40;
+
     private final BankAccountRepository accountRepository;
 
     private final FundHoldRepository holdRepository;
 
     private final BankTransactionRepository transactionRepository;
 
+    private final ClosedTripRepository closedTripRepository;
+
     private final BigDecimal initialBalance;
 
     private final Duration holdTtl;
 
     public BankServiceImpl(BankAccountRepository accountRepository, FundHoldRepository holdRepository,
-            BankTransactionRepository transactionRepository,
+            BankTransactionRepository transactionRepository, ClosedTripRepository closedTripRepository,
             @Value("${payment.bank.initial-balance:500000}") BigDecimal initialBalance,
             @Value("${payment.bank.hold-ttl:PT2H}") Duration holdTtl) {
         this.accountRepository = accountRepository;
         this.holdRepository = holdRepository;
         this.transactionRepository = transactionRepository;
+        this.closedTripRepository = closedTripRepository;
         this.initialBalance = initialBalance;
         this.holdTtl = holdTtl;
     }
@@ -64,11 +76,15 @@ public class BankServiceImpl implements BankService {
     @Override
     @Transactional
     public HoldOutcome hold(UUID tripId, UUID userId, BigDecimal amount) {
+        BankAccount account = lockAccount(userId);
         Optional<FundHold> existing = this.holdRepository.findByTripId(tripId);
         if (existing.isPresent()) {
             return new HoldOutcome(HoldOutcome.Decision.ALREADY_HELD, existing.get());
         }
-        BankAccount account = lockAccount(userId);
+        if (this.closedTripRepository.existsById(tripId)) {
+            log.info("Chuyến đã hủy/thất bại trước khi kịp khoá tiền, không khoá");
+            return new HoldOutcome(HoldOutcome.Decision.TRIP_CLOSED, null);
+        }
         BigDecimal available = available(account);
         if (available.compareTo(amount) < 0) {
             log.info("Không đủ số dư để khoá {}: khả dụng {}", amount, available);
@@ -84,18 +100,27 @@ public class BankServiceImpl implements BankService {
     @Override
     @Transactional
     public boolean release(UUID tripId) {
-        Optional<FundHold> found = this.holdRepository.findByTripId(tripId);
-        if (found.isEmpty() || found.get().getStatus() != HoldStatus.HELD) {
+        Optional<UUID> owner = this.holdRepository.findUserIdByTripId(tripId);
+        if (owner.isEmpty()) {
             return false;
         }
-        FundHold hold = found.get();
-        BankAccount account = lockAccount(hold.getUserId());
-        BigDecimal availableAfter = available(account).add(hold.getAmount());
-        hold.release();
-        this.holdRepository.save(hold);
-        record(account, BankTransactionType.RELEASE, hold.getAmount(), tripId, availableAfter);
-        log.info("Đã mở khoá {} của chuyến", hold.getAmount());
-        return true;
+        return releaseLocked(lockAccount(owner.get()), tripId);
+    }
+
+    @Override
+    @Transactional
+    public boolean closeTrip(UUID tripId, UUID userId, String reason) {
+        UUID owner = (userId != null) ? userId : this.holdRepository.findUserIdByTripId(tripId).orElse(null);
+        if (owner == null) {
+            recordClosed(tripId, reason);
+            return false;
+        }
+        BankAccount account = lockAccount(owner);
+        if (this.holdRepository.findByTripId(tripId).isPresent()) {
+            return releaseLocked(account, tripId);
+        }
+        recordClosed(tripId, reason);
+        return false;
     }
 
     @Override
@@ -172,17 +197,35 @@ public class BankServiceImpl implements BankService {
     }
 
     @Override
-    @Transactional
-    public int expireHolds(Instant now) {
-        List<FundHold> overdue = this.holdRepository.findByStatusAndExpiresAtBefore(HoldStatus.HELD, now,
-                PageRequest.of(0, EXPIRY_BATCH));
-        int released = 0;
-        for (FundHold hold : overdue) {
-            if (release(hold.getTripId())) {
-                released++;
-            }
+    @Transactional(readOnly = true)
+    public List<UUID> expiredHoldTrips(Instant now) {
+        return this.holdRepository.findExpiredHeldTripIds(now, PageRequest.of(0, EXPIRY_BATCH));
+    }
+
+    /**
+     * Gọi khi đã giữ khoá tài khoản: đọc khoản khoá lúc này để thấy trạng thái mới nhất.
+     */
+    private boolean releaseLocked(BankAccount account, UUID tripId) {
+        Optional<FundHold> found = this.holdRepository.findByTripId(tripId);
+        if (found.isEmpty() || found.get().getStatus() != HoldStatus.HELD) {
+            return false;
         }
-        return released;
+        FundHold hold = found.get();
+        BigDecimal availableAfter = available(account).add(hold.getAmount());
+        hold.release();
+        this.holdRepository.save(hold);
+        record(account, BankTransactionType.RELEASE, hold.getAmount(), tripId, availableAfter);
+        log.info("Đã mở khoá {} của chuyến", hold.getAmount());
+        return true;
+    }
+
+    private void recordClosed(UUID tripId, String reason) {
+        if (this.closedTripRepository.existsById(tripId)) {
+            return;
+        }
+        String value = (reason == null || reason.isBlank()) ? "closed" : reason;
+        this.closedTripRepository
+            .save(new ClosedTrip(tripId, value.substring(0, Math.min(value.length(), MAX_REASON_LENGTH))));
     }
 
     private BankAccount lockAccount(UUID userId) {

@@ -9,7 +9,6 @@ import com.ridehail.paymentservice.dto.event.PaymentAuthorizationFailedPayload;
 import com.ridehail.paymentservice.dto.event.PaymentAuthorizedPayload;
 import com.ridehail.paymentservice.dto.event.TripClosedPayload;
 import com.ridehail.paymentservice.dto.event.TripRequestedPayload;
-import com.ridehail.paymentservice.entity.ClosedTrip;
 import com.ridehail.paymentservice.entity.FundHold;
 import com.ridehail.paymentservice.entity.PaymentFailureReason;
 import com.ridehail.paymentservice.entity.PaymentMethod;
@@ -158,27 +157,37 @@ class PaymentAuthorizationServiceImplTest {
 
     @Test
     void cancelledBeforeRequestedNeverHolds() {
-        when(this.bankService.release(TRIP_ID)).thenReturn(false);
-        when(this.closedTripRepository.existsById(TRIP_ID)).thenReturn(false, true);
+        when(this.bankService.closeTrip(TRIP_ID, RIDER_ID, EventTypes.TRIP_CANCELLED)).thenReturn(false);
 
         this.service.handleTripClosed(envelope(EventTypes.TRIP_CANCELLED),
                 new TripClosedPayload(TRIP_ID, RIDER_ID, null));
-        ArgumentCaptor<ClosedTrip> closed = ArgumentCaptor.forClass(ClosedTrip.class);
-        verify(this.closedTripRepository).save(closed.capture());
-        assertEquals(EventTypes.TRIP_CANCELLED, closed.getValue().getReason());
+        verify(this.bankService).closeTrip(TRIP_ID, RIDER_ID, EventTypes.TRIP_CANCELLED);
 
+        when(this.closedTripRepository.existsById(TRIP_ID)).thenReturn(true);
         this.service.handleTripRequested(envelope(EventTypes.TRIP_REQUESTED), requested("BANK"));
         verify(this.bankService, never()).hold(any(), any(), any());
         verify(this.outboxWriter, never()).enqueue(any(), any(), any(), any());
     }
 
     @Test
-    void closingTripWithHoldReleasesIt() {
-        when(this.bankService.release(TRIP_ID)).thenReturn(true);
+    void tripClosedConcurrentlyUnderLockPublishesNothing() {
+        when(this.bankService.hold(TRIP_ID, RIDER_ID, FARE))
+            .thenReturn(new HoldOutcome(HoldOutcome.Decision.TRIP_CLOSED, null));
+
+        this.service.handleTripRequested(envelope(EventTypes.TRIP_REQUESTED), requested("BANK"));
+
+        verify(this.outboxWriter, never()).enqueue(any(), any(), any(), any());
+        verify(this.processedEventRepository).save(any());
+    }
+
+    @Test
+    void closingTripDelegatesToBankWithReason() {
+        when(this.bankService.closeTrip(TRIP_ID, RIDER_ID, "NO_AVAILABLE_DRIVERS")).thenReturn(true);
 
         this.service.handleTripClosed(envelope(EventTypes.TRIP_FAILED),
                 new TripClosedPayload(TRIP_ID, RIDER_ID, "NO_AVAILABLE_DRIVERS"));
 
+        verify(this.bankService).closeTrip(TRIP_ID, RIDER_ID, "NO_AVAILABLE_DRIVERS");
         verify(this.closedTripRepository, never()).save(any());
         verify(this.processedEventRepository).save(any());
     }

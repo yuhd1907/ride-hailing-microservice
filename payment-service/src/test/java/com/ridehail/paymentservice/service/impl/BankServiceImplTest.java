@@ -10,10 +10,12 @@ import java.util.UUID;
 import com.ridehail.paymentservice.entity.BankAccount;
 import com.ridehail.paymentservice.entity.BankTransaction;
 import com.ridehail.paymentservice.entity.BankTransactionType;
+import com.ridehail.paymentservice.entity.ClosedTrip;
 import com.ridehail.paymentservice.entity.FundHold;
 import com.ridehail.paymentservice.entity.HoldStatus;
 import com.ridehail.paymentservice.repository.BankAccountRepository;
 import com.ridehail.paymentservice.repository.BankTransactionRepository;
+import com.ridehail.paymentservice.repository.ClosedTripRepository;
 import com.ridehail.paymentservice.repository.FundHoldRepository;
 import com.ridehail.paymentservice.service.CaptureOutcome;
 import com.ridehail.paymentservice.service.HoldOutcome;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -32,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,11 +58,15 @@ class BankServiceImplTest {
     @Mock
     private BankTransactionRepository transactions;
 
+    @Mock
+    private ClosedTripRepository closedTrips;
+
     private BankServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        this.service = new BankServiceImpl(this.accounts, this.holds, this.transactions, INITIAL, Duration.ofHours(2));
+        this.service = new BankServiceImpl(this.accounts, this.holds, this.transactions, this.closedTrips, INITIAL,
+                Duration.ofHours(2));
     }
 
     private BankAccount lockedAccount(String balance, String held) {
@@ -66,6 +74,16 @@ class BankServiceImplTest {
         when(this.accounts.findForUpdate(USER)).thenReturn(Optional.of(account));
         when(this.holds.sumHeldByUserId(USER)).thenReturn(new BigDecimal(held));
         return account;
+    }
+
+    private BankAccount lockOnly(String balance) {
+        BankAccount account = new BankAccount(USER, new BigDecimal(balance));
+        when(this.accounts.findForUpdate(USER)).thenReturn(Optional.of(account));
+        return account;
+    }
+
+    private FundHold heldHold(String amount) {
+        return new FundHold(TRIP, USER, new BigDecimal(amount), Instant.now().plusSeconds(60));
     }
 
     private BankTransaction savedTransaction() {
@@ -76,8 +94,8 @@ class BankServiceImplTest {
 
     @Test
     void holdCreatesAccountWithInitialBalanceAndHoldsFare() {
-        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
         lockedAccount("500000", "0");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
 
         HoldOutcome outcome = this.service.hold(TRIP, USER, new BigDecimal("125000"));
 
@@ -96,9 +114,26 @@ class BankServiceImplTest {
     }
 
     @Test
-    void holdRejectsWhenAvailableBelowAmount() {
+    void holdLooksForExistingHoldOnlyAfterLockingAccount() {
+        lockedAccount("500000", "0");
         when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
+
+        this.service.hold(TRIP, USER, new BigDecimal("125000"));
+
+        // Hai bản trip.requested của cùng chuyến xử lý đồng thời: bản sau phải thấy khoản
+        // khoá
+        // của bản trước (đọc sau khi chờ khoá tài khoản), không được báo nhầm là thiếu
+        // tiền.
+        InOrder order = inOrder(this.accounts, this.holds, this.closedTrips);
+        order.verify(this.accounts).findForUpdate(USER);
+        order.verify(this.holds).findByTripId(TRIP);
+        order.verify(this.closedTrips).existsById(TRIP);
+    }
+
+    @Test
+    void holdRejectsWhenAvailableBelowAmount() {
         lockedAccount("30000", "0");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
 
         HoldOutcome outcome = this.service.hold(TRIP, USER, new BigDecimal("36000"));
 
@@ -110,8 +145,8 @@ class BankServiceImplTest {
 
     @Test
     void holdCountsExistingHeldMoney() {
-        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
         lockedAccount("100000", "80000");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
 
         assertEquals(HoldOutcome.Decision.INSUFFICIENT_FUNDS,
                 this.service.hold(TRIP, USER, new BigDecimal("30000")).decision());
@@ -119,35 +154,97 @@ class BankServiceImplTest {
 
     @Test
     void secondHoldForSameTripIsAlreadyHeld() {
-        FundHold existing = new FundHold(TRIP, USER, new BigDecimal("125000"), Instant.now().plusSeconds(60));
+        FundHold existing = heldHold("125000");
+        lockOnly("500000");
         when(this.holds.findByTripId(TRIP)).thenReturn(Optional.of(existing));
 
         HoldOutcome outcome = this.service.hold(TRIP, USER, new BigDecimal("125000"));
 
         assertEquals(HoldOutcome.Decision.ALREADY_HELD, outcome.decision());
         assertSame(existing, outcome.hold());
-        verify(this.accounts, never()).findForUpdate(any());
+        verify(this.holds, never()).save(any());
     }
 
     @Test
-    void releaseOnlyReleasesHeld() {
-        FundHold held = new FundHold(TRIP, USER, new BigDecimal("125000"), Instant.now().plusSeconds(60));
-        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.of(held));
-        lockedAccount("500000", "125000");
+    void holdReturnsTripClosedWhenTripWasClosedBeforeLock() {
+        lockOnly("500000");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
+        when(this.closedTrips.existsById(TRIP)).thenReturn(true);
 
-        assertTrue(this.service.release(TRIP));
+        HoldOutcome outcome = this.service.hold(TRIP, USER, new BigDecimal("125000"));
+
+        assertEquals(HoldOutcome.Decision.TRIP_CLOSED, outcome.decision());
+        verify(this.holds, never()).save(any());
+    }
+
+    @Test
+    void closeTripLocksRiderBeforeReleasingOrRecording() {
+        lockOnly("500000");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.empty());
+
+        assertFalse(this.service.closeTrip(TRIP, USER, "trip.cancelled"));
+
+        InOrder order = inOrder(this.accounts, this.holds, this.closedTrips);
+        order.verify(this.accounts).findForUpdate(USER);
+        order.verify(this.holds).findByTripId(TRIP);
+        ArgumentCaptor<ClosedTrip> closed = ArgumentCaptor.forClass(ClosedTrip.class);
+        order.verify(this.closedTrips).save(closed.capture());
+        assertEquals("trip.cancelled", closed.getValue().getReason());
+    }
+
+    @Test
+    void closeTripReleasesHeldMoney() {
+        FundHold held = heldHold("125000");
+        lockedAccount("500000", "125000");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.of(held));
+
+        assertTrue(this.service.closeTrip(TRIP, USER, "NO_AVAILABLE_DRIVERS"));
+
         assertEquals(HoldStatus.RELEASED, held.getStatus());
         assertEquals(BankTransactionType.RELEASE, savedTransaction().getType());
+        verify(this.closedTrips, never()).save(any());
+    }
 
-        assertFalse(this.service.release(TRIP), "khoản đã RELEASED không mở lần hai");
+    @Test
+    void releaseReadsHoldOnlyAfterLockingAccount() {
+        FundHold held = heldHold("125000");
+        when(this.holds.findUserIdByTripId(TRIP)).thenReturn(Optional.of(USER));
+        lockedAccount("500000", "125000");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.of(held));
+
+        assertTrue(this.service.release(TRIP));
+
+        // Đọc trạng thái khoản khoá sau khi đã khoá tài khoản, để không ghi đè một khoản
+        // vừa bị
+        // trừ tiền (CAPTURED) bằng bản đọc cũ.
+        InOrder order = inOrder(this.accounts, this.holds);
+        order.verify(this.holds).findUserIdByTripId(TRIP);
+        order.verify(this.accounts).findForUpdate(USER);
+        order.verify(this.holds).findByTripId(TRIP);
+        assertEquals(HoldStatus.RELEASED, held.getStatus());
+        assertEquals(BankTransactionType.RELEASE, savedTransaction().getType());
+    }
+
+    @Test
+    void releaseSkipsHoldThatIsNoLongerHeld() {
+        FundHold captured = heldHold("125000");
+        captured.capture();
+        when(this.holds.findUserIdByTripId(TRIP)).thenReturn(Optional.of(USER));
+        lockOnly("500000");
+        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.of(captured));
+
+        assertFalse(this.service.release(TRIP));
+        assertEquals(HoldStatus.CAPTURED, captured.getStatus());
+        verify(this.transactions, never()).save(any());
+
         UUID other = UUID.randomUUID();
-        when(this.holds.findByTripId(other)).thenReturn(Optional.empty());
+        when(this.holds.findUserIdByTripId(other)).thenReturn(Optional.empty());
         assertFalse(this.service.release(other));
     }
 
     @Test
     void captureDebitsHeldAmount() {
-        FundHold held = new FundHold(TRIP, USER, new BigDecimal("125000"), Instant.now().plusSeconds(60));
+        FundHold held = heldHold("125000");
         BankAccount account = lockedAccount("500000", "125000");
         when(this.holds.findByTripId(TRIP)).thenReturn(Optional.of(held));
 
@@ -196,19 +293,13 @@ class BankServiceImplTest {
     }
 
     @Test
-    void expireHoldsReleasesOverdueHolds() {
+    void expiredHoldTripsReturnsTripIdsWithoutLoadingHolds() {
         UUID secondTrip = UUID.randomUUID();
-        FundHold first = new FundHold(TRIP, USER, new BigDecimal("10000"), Instant.now().minusSeconds(60));
-        FundHold second = new FundHold(secondTrip, USER, new BigDecimal("20000"), Instant.now().minusSeconds(60));
-        when(this.holds.findByStatusAndExpiresAtBefore(eq(HoldStatus.HELD), any(Instant.class), any()))
-            .thenReturn(List.of(first, second));
-        when(this.holds.findByTripId(TRIP)).thenReturn(Optional.of(first));
-        when(this.holds.findByTripId(secondTrip)).thenReturn(Optional.of(second));
-        lockedAccount("500000", "30000");
+        Instant now = Instant.now();
+        when(this.holds.findExpiredHeldTripIds(eq(now), any())).thenReturn(List.of(TRIP, secondTrip));
 
-        assertEquals(2, this.service.expireHolds(Instant.now()));
-        assertEquals(HoldStatus.RELEASED, first.getStatus());
-        assertEquals(HoldStatus.RELEASED, second.getStatus());
+        assertEquals(List.of(TRIP, secondTrip), this.service.expiredHoldTrips(now));
+        verify(this.holds, never()).findByTripId(any());
     }
 
 }

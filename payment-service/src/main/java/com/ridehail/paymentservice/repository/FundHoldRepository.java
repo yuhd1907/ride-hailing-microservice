@@ -7,7 +7,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.ridehail.paymentservice.entity.FundHold;
-import com.ridehail.paymentservice.entity.HoldStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -21,6 +20,15 @@ public interface FundHoldRepository extends JpaRepository<FundHold, UUID> {
             + "where h.userId = :userId and h.status = com.ridehail.paymentservice.entity.HoldStatus.HELD")
     BigDecimal sumHeldByUserId(@Param("userId") UUID userId);
 
-    List<FundHold> findByStatusAndExpiresAtBefore(HoldStatus status, Instant before, Pageable pageable);
+    /**
+     * Chủ của khoản khoá, đọc dạng projection để không nạp entity vào persistence context
+     * trước khi khoá tài khoản.
+     */
+    @Query("select h.userId from FundHold h where h.tripId = :tripId")
+    Optional<UUID> findUserIdByTripId(@Param("tripId") UUID tripId);
+
+    @Query("select h.tripId from FundHold h where h.status = com.ridehail.paymentservice.entity.HoldStatus.HELD "
+            + "and h.expiresAt < :now order by h.expiresAt")
+    List<UUID> findExpiredHeldTripIds(@Param("now") Instant now, Pageable pageable);
 
 }

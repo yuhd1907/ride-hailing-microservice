@@ -1,6 +1,8 @@
 package com.ridehail.paymentservice.service.impl;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 import com.ridehail.paymentservice.service.BankService;
 import org.slf4j.Logger;
@@ -26,14 +28,30 @@ public class HoldExpiryJob {
     @Scheduled(fixedDelayString = "${payment.bank.expiry-check-interval-ms:60000}",
             initialDelayString = "${payment.bank.expiry-check-interval-ms:60000}")
     public void expire() {
+        List<UUID> trips;
         try {
-            int released = this.bankService.expireHolds(Instant.now());
-            if (released > 0) {
-                log.info("Đã mở {} khoản khoá quá hạn", released);
-            }
+            trips = this.bankService.expiredHoldTrips(Instant.now());
         }
         catch (RuntimeException ex) {
-            log.warn("Không mở được khoản khoá quá hạn: {}", ex.getMessage());
+            log.warn("Không đọc được khoản khoá quá hạn: {}", ex.getMessage());
+            return;
+        }
+        int released = 0;
+        for (UUID tripId : trips) {
+            // Mỗi lời gọi đi qua proxy nên là một transaction riêng: một khoản lỗi không
+            // làm
+            // hoãn các khoản khác, và mỗi lần chỉ giữ khoá một tài khoản.
+            try {
+                if (this.bankService.release(tripId)) {
+                    released++;
+                }
+            }
+            catch (RuntimeException ex) {
+                log.warn("Không mở được khoản khoá quá hạn của chuyến {}: {}", tripId, ex.getMessage());
+            }
+        }
+        if (released > 0) {
+            log.info("Đã mở {} khoản khoá quá hạn", released);
         }
     }
 

@@ -22,6 +22,14 @@ public interface BankService {
      */
     boolean release(UUID tripId);
 
+    /**
+     * Chuyến bị hủy hoặc thất bại: khoá tài khoản của khách rồi mở khoản đang khoá; nếu
+     * chuyến chưa có khoản khoá thì ghi nhận chuyến đã đóng để trip.requested tới sau
+     * không khoá nữa.
+     * @return true nếu có khoản đang khoá vừa được mở
+     */
+    boolean closeTrip(UUID tripId, UUID userId, String reason);
+
     CaptureOutcome capture(UUID tripId, UUID userId, BigDecimal amount);
 
     BankAccountResponse account(UUID userId);
@@ -36,8 +44,9 @@ public interface BankService {
     BankAccountResponse setBalance(UUID userId, BigDecimal balance);
 
     /**
-     * @return số khoản quá hạn vừa được mở
+     * Các chuyến có khoản khoá đã quá hạn (tối đa một lô). Người gọi mở từng khoản bằng
+     * {@link #release(UUID)}, mỗi lần một transaction.
      */
-    int expireHolds(Instant now);
+    List<UUID> expiredHoldTrips(Instant now);
 
 }

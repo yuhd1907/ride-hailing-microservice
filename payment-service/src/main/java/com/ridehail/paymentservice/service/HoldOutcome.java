@@ -9,7 +9,12 @@ public record HoldOutcome(Decision decision, FundHold hold) {
 
     public enum Decision {
 
-        HELD, ALREADY_HELD, INSUFFICIENT_FUNDS
+        HELD, ALREADY_HELD, INSUFFICIENT_FUNDS,
+
+        /**
+         * Chuyến đã hủy/thất bại (closed_trips) trước khi kịp khoá: không khoá tiền.
+         */
+        TRIP_CLOSED
 
     }
 
