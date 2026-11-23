@@ -35,6 +35,7 @@ docker-compose.override.yml
 #Node.js
 node_modules/
 npm-debug.log*
+.npm-cache/
 
 # Local plans and agent instructions
 ROADMAP*.md

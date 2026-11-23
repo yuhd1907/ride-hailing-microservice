@@ -1,0 +1,11 @@
+Phase3 integration: 2026-11-23T03:23:20.253Z; gateway=http://127.0.0.1:8080; real PostgreSQL/RabbitMQ/Eureka/Java services; runtime=Docker Compose
+PASS 1: Server quote is deterministic: distance=1.55 km; fare=28000 VND; driver/forged passenger/anonymous bookings denied
+PASS 2: Nearest A assigned; client fare=1 ignored; owner reads enforced; all four driver actions and spoofed Gateway headers denied for unauthorized users; tripId=ca9c9d8a-b8fc-4891-9c1a-e93010c94937
+PASS 3: A rejected -> AVAILABLE; Matching selected B and excluded A; duplicate rejection/stale assignment cannot restore A; A=d09bdda6-4599-48c6-9bf0-7d6229fa8ccf; B=8f4f1452-6832-4913-a4d0-bdb77737c730
+PASS 4: B accepted -> IN_PROGRESS -> complete -> CONFIRMED; Payment charged stored fare 28000; repeated start/complete produced one payment event; persistent AMQP eventId/correlationId verified
+PASS 5: Both drivers rejected -> FAILED -> passenger received TRIP_FAILED; duplicate failure did not create duplicate trip.failed; tripId=00376747-993f-4f10-b6d5-484dc74d71bb
+PASS 6: Passenger cancellation before acceptance -> CANCELLED; reserved driver freed; duplicate cancel emitted one event; other passenger denied; tripId=6d52d814-104b-4554-b065-cde01193acfd
+PASS 7: Cancellation delivered before trip.requested; terminal tombstone blocks late request without assignment or leaked reservation
+PASS 8: Concurrent accept/cancel: exactly one succeeds, the loser gets 409, driver state matches the winning transition
+PASS 9: Real PostgreSQL optimistic version check: stale snapshot rejected, one version increment and no stale history committed
+RESULT: 9 integration checks PASS; real PostgreSQL, RabbitMQ and application services; runtime=Docker Compose.

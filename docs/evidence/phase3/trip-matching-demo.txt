@@ -1,0 +1,6 @@
+Phase3 demo: 2026-11-17T16:15:28.531Z; gateway=http://127.0.0.1:8080; real PostgreSQL/RabbitMQ/Eureka/Java services; runtime=Docker Compose; origin/develop af1f978
+PASS 1: Server quote is deterministic: distance=1.55 km; fare=28000 VND; driver/forged passenger/anonymous bookings denied
+PASS 2: Nearest A assigned; client fare=1 ignored; owner reads enforced; all four driver actions and spoofed Gateway headers denied for unauthorized users; tripId=b423ebc3-9651-4774-87ae-228abf9f1b98
+PASS 3: A rejected -> AVAILABLE; Matching selected B and excluded A; duplicate rejection/stale assignment cannot restore A; A=b7b478dc-0421-40ed-9510-2819ff77a77a; B=34ba36b1-5bdf-45dd-8db9-8eb5f1f90a20
+PASS 4: B accepted -> IN_PROGRESS -> complete -> CONFIRMED; Payment charged stored fare 28000; repeated start/complete produced one payment event; persistent AMQP eventId/correlationId verified
+RESULT: 4 demo checks PASS. Fare=28000 VND; tripId=b423ebc3-9651-4774-87ae-228abf9f1b98

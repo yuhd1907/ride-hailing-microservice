@@ -61,7 +61,7 @@ async function main() {
   // A đứng ngay điểm đón nên luôn gần nhất; B cách khoảng 220 m.
   const driverA = await onlineDriver(0), driverB = await onlineDriver(0.002);
   const correlationId = uuid();
-  const trip = await ok('/trips', { method: 'POST', token: rider.token, correlationId, body: { riderId: rider.userId, pickup, destination: { lat: pickup.lat + 0.01, lng: pickup.lng + 0.01 }, estimatedDistance: 3, fareAmount: 125000 } });
+  const trip = await ok('/trips', { method: 'POST', token: rider.token, correlationId, body: { pickup, destination: { lat: pickup.lat + 0.01, lng: pickup.lng + 0.01 } } });
   await tripWith(trip.tripId, rider.token, 'AWAITING_DRIVER', driverA.userId);
   let stateA = await driverState(driverA);
   assert.deepEqual([stateA.status, stateA.currentTripId], ['RESERVED', trip.tripId]);

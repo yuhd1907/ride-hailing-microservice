@@ -27,7 +27,7 @@ Consume thêm `matching-service.trip.driver_rejected`: nếu lượt ghép đang
 mới và giữ tài xế đó trong `attemptedDriverIds`; sau đó chạy lại đúng luồng ghép ở
 trên nên tài xế vừa từ chối không được chọn lại dù đã `AVAILABLE`. Message gửi lại
 hoặc lời từ chối cũ đến muộn không khớp điều kiện nên không phá lượt ghép mới.
-Không còn tài xế nào khác thì message vào DLQ sau 3 lần thử, chuyến nằm ở `MATCHING`.
+Không còn tài xế nào khác thì Matching phát `matching.failed`, Trip chuyển chuyến sang `FAILED` và Notification báo khách (chi tiết ở `docs/phase3-trip-matching.md`).
 
 ## 3. API Trip
 

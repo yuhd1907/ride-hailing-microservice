@@ -265,6 +265,25 @@ lại `matching.driver_assigned`. Queue `matching-service.trip.driver_rejected`.
 Vì một chuyến có thể được ghép nhiều lần, consumer của `matching.driver_assigned`
 có thể nhận nhiều event cho cùng `tripId` (mỗi event một `eventId` và `driverId`).
 
+### 2.8 Phase3: hết tài xế và hủy trước khi nhận
+
+| Event | Producer | Consumer/queue | Payload bắt buộc |
+| --- | --- | --- | --- |
+| `matching.failed` | Matching | `trip-service.matching.failed` | `tripId`, `riderId`, `reason="NO_AVAILABLE_DRIVERS"`, `failedAt` UTC |
+| `trip.failed` | Trip | `notification-service.trip.failed` | `tripId`, `riderId`, `reason="NO_AVAILABLE_DRIVERS"`, `failedAt` UTC |
+| `trip.cancelled` | Trip | `matching-service.trip.cancelled` | `tripId`, `riderId`, `cancelledAt` UTC; `driverId` UUID hoặc null |
+
+Envelope và metadata AMQP giữ nguyên. Mỗi queue có DLQ tương ứng qua
+`rideflow.dlx`. Hết tài xế là kết quả nghiệp vụ được commit/ACK, không retry
+vô hạn. Notification gửi `TRIP_FAILED` cho hành khách từ `trip.failed`.
+`matching.driver_assigned` bổ sung `reservationId` UUID; consumer vẫn chấp nhận
+event phase2 không có trường này.
+
+Trong phase3, `trip.requested` chứa giá/quãng đường **do Trip tính** từ tọa độ.
+`trip.completed.fareAmount` luôn là `trips.fare` đã chốt khi tạo chuyến; client
+không được quyết định hoặc sửa số tiền Payment thu.
+Chi tiết REST, vòng đời, outbox và nhất quán: [báo cáo phase3](phase3-trip-matching.md).
+
 ## 3. Quyết định hợp đồng TV2 (2026-11-10)
 
 1. Đồng ý exchange `rideflow.events` topic durable; routing key bằng eventType.
@@ -287,3 +306,4 @@ khi vắng mặt Trip lấy tài xế đã lưu trong DB, khi có thì kiểm tr
 | 2026-10-25 | TV Payment/Notification | Chốt mọi ID là UUID (idempotency key = `tripId`), thêm quy ước Correlation ID và tài khoản RabbitMQ (mục 1.5) |
 | 2026-11-10 | TV2 Trip/Matching | AGREED; riderId, CANCELLED; trả lời 6 câu hỏi; retry/DLQ, trip.requested và outbox |
 | 2026-11-16 | TV1 Driver/Gateway (phối hợp TV2) | Thêm `trip.driver_rejected` (mục 2.7) cho luồng tài xế từ chối chuyến; không đổi field của event cũ |
+| 2026-11-17 | TV2 Trip/Matching | Phase3: giá server, accept/cancel, `matching.failed`, `trip.failed`, `trip.cancelled`, reservationId tùy chọn |

@@ -10,6 +10,7 @@ import com.ridehail.notificationservice.dto.event.DriverAssignedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentFailedPayload;
 import com.ridehail.notificationservice.dto.event.PaymentSucceededPayload;
 import com.ridehail.notificationservice.dto.event.TripCompensatedPayload;
+import com.ridehail.notificationservice.dto.event.TripFailedPayload;
 import com.ridehail.notificationservice.service.NotificationMessageFactory;
 import com.ridehail.notificationservice.service.NotificationService;
 import org.slf4j.Logger;
@@ -71,6 +72,12 @@ public class NotificationEventListener {
             requireRider(payload.resolvedRiderId(), EventTypes.TRIP_COMPENSATED);
             return this.messageFactory.tripCompensated(payload);
         }, TripCompensatedPayload::tripId);
+    }
+
+    @RabbitListener(queues = RabbitConfig.TRIP_FAILED_QUEUE)
+    public void onTripFailed(Message message) {
+        handle(message, EventTypes.TRIP_FAILED, TripFailedPayload.class, this.messageFactory::tripFailed,
+                TripFailedPayload::tripId);
     }
 
     private <T> void handle(Message message, String eventType, Class<T> payloadType,

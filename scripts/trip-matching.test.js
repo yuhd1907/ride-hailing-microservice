@@ -220,7 +220,7 @@ test('matching reserves with durable identity, emits once, and retries same rese
   assert.equal(outbox[0].correlationId, event.correlationId);
   assert.equal(row.status, 'ASSIGNED');
 });
-test('HTTP create, complete, duplicate complete and invalid amount', async () => {
+test('HTTP create prices on server; complete ignores client fare and is idempotent', async () => {
   const express = require('../trip-service/node_modules/express');
   const app = express();
   app.use(express.json());
@@ -237,7 +237,7 @@ test('HTTP create, complete, duplicate complete and invalid amount', async () =>
   const routes = load('trip-service', 'routes.js', {
     './db': client,
     './events': { transaction: async work => { const result = await work(client); order.push('COMMIT'); return result; }, enqueue: async (client, type, payload, correlationId) => { outbox.push({ type, payload, correlationId }); order.push('OUTBOX'); } },
-    './saga': { history: async (client, row, status) => trip.status = status },
+    './saga': { history: async (client, row, status) => { trip.status = status; return { ...trip }; } },
     './service-client': { request: async () => {} },
   });
   // Bridge VM promises to the native Promise realm used by Express.
@@ -246,7 +246,7 @@ test('HTTP create, complete, duplicate complete and invalid amount', async () =>
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const url = `http://127.0.0.1:${server.address().port}`;
-  const post = (path, body) => fetch(url + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const post = (path, body) => fetch(url + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': path === '/trips' ? riderId : driverId, 'X-User-Roles': path === '/trips' ? 'ROLE_PASSENGER' : 'ROLE_DRIVER' }, body: JSON.stringify(body) });
   try {
     let response = await post('/trips', { riderId, pickup: { lat: 10, lng: 106 }, destination: { lat: 11, lng: 106 }, estimatedDistance: 3, fareAmount: 125000 });
     assert.equal(response.status, 201);
@@ -255,12 +255,14 @@ test('HTTP create, complete, duplicate complete and invalid amount', async () =>
     trip.driverId = driverId;
     trip.status = 'IN_PROGRESS';
     response = await post(`/trips/${trip.tripId}/complete`, { fareAmount: 1.234 });
-    assert.equal(response.status, 400);
+    assert.equal(response.status, 200);
     response = await post(`/trips/${trip.tripId}/complete`, { fareAmount: 5000000 });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).status, 'PAYMENT_PENDING');
     assert.equal(outbox[1].type, 'trip.completed');
-    assert.equal(outbox[1].payload.fareAmount, 5000000);
+    assert.equal(outbox[1].payload.fareAmount, trip.fare);
+    assert.notEqual(trip.fare, 125000);
+    assert.notEqual(trip.fare, 5000000);
     assert.equal(outbox[1].payload.riderId, riderId);
     assert.equal(outbox[1].correlationId, correlationId);
     await post(`/trips/${trip.tripId}/complete`, {});
@@ -296,7 +298,7 @@ function matchingRow() {
       Object.assign(row, { status: args[2], selectedDriverId: null, reservationId: args[3] });
       if (!row.attemptedDriverIds.includes(args[1])) row.attemptedDriverIds.push(args[1]);
     } else if (sql.includes('SET "selectedDriverId"=$2')) row.selectedDriverId = args[1];
-    else if (sql.includes('SET status=$2')) { row.status = args[1]; row.attemptedDriverIds.push(args[2]); }
+    else if (sql.includes('SET status=$2')) { row.status = args[1]; row.selectedDriverId = args[2]; if (args[2]) row.attemptedDriverIds.push(args[2]); }
     return { rows: [], rowCount: 1 };
   } };
   return { row, client };
@@ -342,7 +344,7 @@ async function serveTrip(mocks) {
   await new Promise(resolve => server.once('listening', resolve));
   const url = `http://127.0.0.1:${server.address().port}`;
   return {
-    reject: (tripId, driverId) => fetch(`${url}/trips/${tripId}/reject`, { method: 'POST', headers: driverId ? { 'X-User-Id': driverId } : {} }),
+    reject: (tripId, driverId) => fetch(`${url}/trips/${tripId}/reject`, { method: 'POST', headers: driverId ? { 'X-User-Id': driverId, 'X-User-Roles': 'ROLE_DRIVER' } : {} }),
     close: () => new Promise(resolve => server.close(resolve)),
   };
 }
@@ -382,21 +384,34 @@ test('rejection re-matches with a different driver and ignores redelivery', asyn
   assert.equal(h.reserves.length, 2);
   assert.equal(h.outbox.length, 2);
 });
-test('rejection with no other driver stays pending and succeeds when redriven', async () => {
+test('rejection with no other driver fails once; redelivery cannot revive the trip', async () => {
   const requested = requestedEvent(), driverA = id(), driverB = id();
   let nearby = [{ id: driverA }];
   const h = matchingHarness(() => nearby);
   await h.matching.handle(requested);
   const rejected = rejection(requested, driverA);
-  await assert.rejects(h.matching.rejected(rejected), /No available driver/);
-  assert.equal(h.row.status, 'PENDING');
+  await h.matching.rejected(rejected);
+  assert.equal(h.row.status, 'FAILED');
   assert.equal(h.row.selectedDriverId, null);
-  assert.equal(h.outbox.length, 1);
+  assert.equal(h.outbox.length, 2);
+  assert.equal(h.outbox[1].eventType, 'matching.failed');
+  assert.equal(h.outbox[1].payload.reason, 'NO_AVAILABLE_DRIVERS');
   nearby = [{ id: driverA }, { id: driverB }];
   await h.matching.rejected(rejected);
-  assert.equal(h.row.selectedDriverId, driverB);
-  assert.equal(h.outbox[1].payload.driverId, driverB);
+  assert.equal(h.row.selectedDriverId, null);
+  assert.equal(h.row.status, 'FAILED');
+  assert.equal(h.outbox.length, 2);
 });
+test('no available driver on initial request produces one terminal failure', async () => {
+  const event = requestedEvent(), h = matchingHarness(() => []);
+  await h.matching.handle(event);
+  await h.matching.handle({ ...event, eventId: id() });
+  assert.equal(h.row.status, 'FAILED');
+  assert.equal(h.reserves.length, 0);
+  assert.equal(h.outbox.length, 1);
+  assert.equal(h.outbox[0].eventType, 'matching.failed');
+});
+
 test('HTTP reject: only the assigned driver, only while awaiting driver, one event', async () => {
   const driverId = id(), sagaId = id();
   const trip = { tripId: id(), passengerId: id(), driverId, pickup: { lat: 10.77, lng: 106.7 }, fare: '125000.00', sagaId, status: 'AWAITING_DRIVER', paymentId: null };
@@ -405,8 +420,12 @@ test('HTTP reject: only the assigned driver, only while awaiting driver, one eve
   const client = { query: async () => ({ rows: [{ ...trip }] }) };
   const http = await serveTrip({
     './db': client,
-    './events': { transaction: work => work(client), enqueue: async (client, type, payload, correlationId) => outbox.push({ type, payload, correlationId }) },
-    './saga': { history: async (client, row, status, reason, paymentId, assignedDriverId) => { histories.push([row.status, status, reason]); Object.assign(trip, { status, driverId: assignedDriverId }); } },
+    './events': { transaction: async work => {
+      const snapshot = { ...trip }, length = histories.length;
+      try { return await work(client); }
+      catch (error) { Object.assign(trip, snapshot); histories.length = length; throw error; }
+    }, enqueue: async (client, type, payload, correlationId) => outbox.push({ type, payload, correlationId }) },
+    './saga': { history: async (client, row, status, reason, paymentId, assignedDriverId) => { histories.push([row.status, status, reason]); Object.assign(trip, { status, driverId: assignedDriverId }); return { ...trip }; } },
     './service-client': { request: async (app, url, correlationId, body) => { calls.push({ app, url, correlationId, body }); if (driverError) throw driverError; } },
   });
   try {
@@ -438,7 +457,7 @@ test('HTTP reject: only the assigned driver, only while awaiting driver, one eve
     assert.ok(validation.utc(outbox[0].payload.rejectedAt));
     assert.deepEqual({ ...outbox[0].payload, rejectedAt: null }, { tripId: trip.tripId, riderId: trip.passengerId, driverId, pickup: trip.pickup, rejectedAt: null });
     // Gọi lại sau khi đã từ chối, hoặc khi chuyến đã chạy: không nhả tài xế, không phát event lần nữa.
-    assert.equal((await http.reject(trip.tripId, driverId)).status, 409);
+    assert.equal((await http.reject(trip.tripId, driverId)).status, 403);
     Object.assign(trip, { status: 'IN_PROGRESS', driverId });
     assert.equal((await http.reject(trip.tripId, driverId)).status, 409);
     assert.equal(calls.length, 1);
@@ -464,7 +483,7 @@ test('end to end: rejecting driver is freed at once and the trip goes to another
   const histories = [], tripOutbox = [], matchingOutbox = [];
   const tripClient = { query: async (sql, args) => {
     if (sql.startsWith('SELECT')) return { rows: [{ ...trip }] };
-    if (sql.startsWith('UPDATE trips SET status')) Object.assign(trip, { status: args[1], paymentId: args[2], driverId: args[3] });
+    if (sql.startsWith('UPDATE trips SET status')) { Object.assign(trip, { status: args[1], paymentId: args[2], driverId: args[3], rejectedDriverIds: args[5] }); return { rows: [{ ...trip }], rowCount: 1 }; }
     if (sql.startsWith('INSERT INTO trip_status_history')) histories.push(`${args[1]}>${args[2]}`);
     return { rows: [], rowCount: 1 };
   } };

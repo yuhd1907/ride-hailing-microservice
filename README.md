@@ -1,5 +1,9 @@
 # Ride-Hailing Microservice
 
+Trip/Matching phase3: [báo cáo các mục 4, 8, 13, 10](docs/phase3-trip-matching.md),
+[hướng dẫn demo](docs/demo-trip-matching-phase3.md),
+[minh chứng kiểm thử](docs/evidence/phase3/trip-matching-results.md).
+
 Dự án mô phỏng hệ thống gọi xe theo kiến trúc microservice, phục vụ học phần **Các hệ thống phân tán**. Hệ thống hướng đến luồng hành khách đặt chuyến, tìm tài xế gần vị trí đón, giữ tài xế, thực hiện chuyến đi, thanh toán và gửi thông báo.
 
 Hệ thống gồm bảy service chạy chung bằng Docker Compose: Eureka Server, API Gateway và sáu service nghiệp vụ (User, Driver, Trip, Matching, Payment, Notification). Mỗi service nghiệp vụ có database PostgreSQL riêng, đăng ký với Eureka và được Gateway định tuyến qua `lb://`. Các service trao đổi sự kiện bất đồng bộ qua RabbitMQ (exchange `rideflow.events`).

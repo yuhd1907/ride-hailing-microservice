@@ -26,6 +26,7 @@ app.use((error, req, res, next) => { log('error', req.correlationId, req.method,
 rabbitmq.consume('payment.succeeded', saga.payment);
 rabbitmq.consume('payment.failed', saga.payment);
 rabbitmq.consume('matching.driver_assigned', saga.assigned);
+rabbitmq.consume('matching.failed', saga.failed);
 let outboxTimer;
 const server = app.listen(port, () => log('info', null, null, null, `trip-service listening on ${port}`));
 (async () => { for (; ;) { try { await events.initialize(); await rabbitmq.connect(); outboxTimer = setInterval(events.flush, 1000); log('info', null, null, null, 'RabbitMQ connected'); break; } catch (e) { log('error', null, null, null, `Startup failed: ${errorDetails(e)}`); await new Promise(r => setTimeout(r, 3000)); } } try { eureka.start(); } catch (e) { log('error', null, null, null, `Eureka startup failed: ${errorDetails(e)}`); } })();

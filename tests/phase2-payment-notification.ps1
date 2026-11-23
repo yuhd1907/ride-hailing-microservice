@@ -304,13 +304,16 @@ try {
     $token2 = Get-Token 'passenger2@ridehail.com'
     $h1 = @{ Authorization = "Bearer $token1" }
     $h2 = @{ Authorization = "Bearer $token2" }
+    # Payment (T10) và Notification (T11) vừa khởi động lại: Gateway giữ danh sách instance cũ tới ~35s,
+    # nên chờ 3 lần gọi liên tiếp đều 200 rồi mới kiểm tra phân quyền.
+    $streak = 0
+    Wait-Until { if ((Get-StatusCode "$Gateway/payments/me" $h1) -eq 200) { $script:streak++ } else { $script:streak = 0 }; $script:streak -ge 3 } 120 | Out-Null
+    $streak = 0
+    Wait-Until { if ((Get-StatusCode "$Gateway/notifications/me" $h1) -eq 200) { $script:streak++ } else { $script:streak = 0 }; $script:streak -ge 3 } 120 | Out-Null
     $noToken = Get-StatusCode "$Gateway/payments/me"
     $own = Get-StatusCode "$Gateway/payments/$($t1Payment.paymentId)" $h1
     $other = Get-StatusCode "$Gateway/payments/$($t1Payment.paymentId)" $h2
     $badId = Get-StatusCode "$Gateway/payments/khong-phai-uuid" $h1
-    # Payment (T10) và Notification (T11) vừa khởi động lại: chờ Gateway thấy instance mới trên Eureka
-    Wait-Until { (Get-StatusCode "$Gateway/payments/me" $h1) -eq 200 } 120 | Out-Null
-    Wait-Until { (Get-StatusCode "$Gateway/notifications/me" $h1) -eq 200 } 120 | Out-Null
     $myNotes = Get-StatusCode "$Gateway/notifications/me" $h1
     $ok = ($noToken -eq 401) -and ($own -eq 200) -and ($other -eq 403) -and ($badId -eq 400) -and ($myNotes -eq 200)
     Add-Result 'T13' 'Phân quyền khi xem payment/thông báo' $ok "khong token=$noToken, chu so huu=$own, nguoi khac=$other, id sai=$badId, /notifications/me=$myNotes"

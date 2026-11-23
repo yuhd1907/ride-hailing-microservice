@@ -288,13 +288,23 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional
     public DriverResponse releaseDriver(UUID driverId) {
+        return releaseDriver(driverId, null);
+    }
+
+    @Override
+    @Transactional
+    public DriverResponse releaseDriver(UUID driverId, UUID tripId) {
         MDC.put("driverId", driverId.toString());
         MDC.put("action", "RELEASE_DRIVER");
 
-        int updatedRows = driverRepository.releaseDriver(driverId);
+        int updatedRows = tripId == null ? driverRepository.releaseDriver(driverId)
+                : driverRepository.releaseDriverForTrip(driverId, tripId);
         if (updatedRows == 0) {
             requireDriverExists(driverId);
             Driver existing = driverRepository.findById(driverId).orElse(null);
+            if (tripId != null && existing != null && !tripId.equals(existing.getCurrentTripId())) {
+                return driverMapper.toResponse(existing);
+            }
             if (existing != null && existing.getStatus() == DriverStatus.AVAILABLE) {
                 log.debug("[{}] Idempotent release cho driverId={} (đã AVAILABLE)", instanceId, driverId);
                 return driverMapper.toResponse(existing);
@@ -349,14 +359,22 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional
     public DriverResponse startTrip(UUID driverId) {
+        return startTrip(driverId, null);
+    }
+
+    @Override
+    @Transactional
+    public DriverResponse startTrip(UUID driverId, UUID tripId) {
         MDC.put("driverId", driverId.toString());
         MDC.put("action", "START_TRIP");
 
-        int updatedRows = driverRepository.startTrip(driverId);
+        int updatedRows = tripId == null ? driverRepository.startTrip(driverId)
+                : driverRepository.startTripForTrip(driverId, tripId);
         if (updatedRows == 0) {
             requireDriverExists(driverId);
             Driver existing = driverRepository.findById(driverId).orElse(null);
-            if (existing != null && existing.getStatus() == DriverStatus.ON_TRIP) {
+            if (existing != null && existing.getStatus() == DriverStatus.ON_TRIP
+                    && (tripId == null || tripId.equals(existing.getCurrentTripId()))) {
                 log.debug("[{}] Idempotent start-trip cho driverId={} (đã ON_TRIP)", instanceId, driverId);
                 return driverMapper.toResponse(existing);
             }
@@ -377,13 +395,23 @@ public class DriverServiceImpl implements DriverService {
     @Override
     @Transactional
     public DriverResponse completeTrip(UUID driverId) {
+        return completeTrip(driverId, null);
+    }
+
+    @Override
+    @Transactional
+    public DriverResponse completeTrip(UUID driverId, UUID tripId) {
         MDC.put("driverId", driverId.toString());
         MDC.put("action", "COMPLETE_TRIP");
 
-        int updatedRows = driverRepository.completeTrip(driverId);
+        int updatedRows = tripId == null ? driverRepository.completeTrip(driverId)
+                : driverRepository.completeTripForTrip(driverId, tripId);
         if (updatedRows == 0) {
             requireDriverExists(driverId);
             Driver existing = driverRepository.findById(driverId).orElse(null);
+            if (tripId != null && existing != null && !tripId.equals(existing.getCurrentTripId())) {
+                return driverMapper.toResponse(existing);
+            }
             if (existing != null && existing.getStatus() == DriverStatus.AVAILABLE) {
                 log.debug("[{}] Idempotent complete-trip cho driverId={} (đã AVAILABLE)", instanceId, driverId);
                 return driverMapper.toResponse(existing);

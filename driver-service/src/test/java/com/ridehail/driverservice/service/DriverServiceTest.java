@@ -58,6 +58,42 @@ class DriverServiceTest {
         service = new DriverServiceImpl(drivers, geo, locations, new DriverMapper(), "driver-test");
     }
 
+    @Test
+    void scopedStartCannotStartAnotherTripsReservation() {
+        UUID driverId = UUID.randomUUID();
+        UUID requestedTrip = UUID.randomUUID();
+        Driver driver = new Driver();
+        driver.setId(driverId);
+        driver.setStatus(DriverStatus.ON_TRIP);
+        driver.setCurrentTripId(UUID.randomUUID());
+        when(drivers.existsById(driverId)).thenReturn(true);
+        when(drivers.findById(driverId)).thenReturn(Optional.of(driver));
+        assertThrows(InvalidStateTransitionException.class, () -> service.startTrip(driverId, requestedTrip));
+        verify(drivers).startTripForTrip(driverId, requestedTrip);
+        verify(drivers, never()).startTrip(driverId);
+        verifyNoInteractions(geo);
+    }
+
+    @Test
+    void scopedCompletionAndCompensationLeaveAnotherTripAlone() {
+        UUID driverId = UUID.randomUUID();
+        UUID oldTrip = UUID.randomUUID();
+        UUID currentTrip = UUID.randomUUID();
+        Driver driver = new Driver();
+        driver.setId(driverId);
+        driver.setStatus(DriverStatus.ON_TRIP);
+        driver.setCurrentTripId(currentTrip);
+        when(drivers.existsById(driverId)).thenReturn(true);
+        when(drivers.findById(driverId)).thenReturn(Optional.of(driver));
+        service.completeTrip(driverId, oldTrip);
+        service.releaseDriver(driverId, oldTrip);
+        assertEquals(currentTrip, driver.getCurrentTripId());
+        assertEquals(DriverStatus.ON_TRIP, driver.getStatus());
+        verify(drivers).completeTripForTrip(driverId, oldTrip);
+        verify(drivers).releaseDriverForTrip(driverId, oldTrip);
+        verifyNoInteractions(geo);
+    }
+
     @AfterEach
     void clearContext() {
         MDC.clear();

@@ -61,12 +61,15 @@ async function user(role) {
 async function tripStatus(tripId, status) {
     return waitFor(`${tripId} => ${status}`, async () => {
         const { rows: [trip] } = await tripDb.query('SELECT * FROM trips WHERE "tripId"=$1', [tripId]);
-        return trip?.status === status && trip;
+        return (Array.isArray(status) ? status.includes(trip?.status) : trip?.status === status) && trip;
     });
 }
 async function pendingTrip(rider, driver, fare) {
     const correlationId = uuid();
-    const { data: trip } = await request(`${gateway}/trips`, { method: 'POST', token: rider.token, correlationId, body: { riderId: rider.userId, pickup, destination: { lat: pickup.lat + 0.01, lng: pickup.lng + 0.01 }, estimatedDistance: 3, fareAmount: fare } });
+    // A long route exercises payment failure without allowing client-set prices.
+    const destination = { lat: pickup.lat + (fare > 2000000 ? 3 : 0.01), lng: pickup.lng + 0.01 };
+    const { data: trip } = await request(`${gateway}/trips`, { method: 'POST', token: rider.token, correlationId, body: { pickup, destination } });
+    fare = Number(trip.fare);
     await tripStatus(trip.tripId, 'AWAITING_DRIVER');
     const { data: assigned } = await request(`${gateway}/drivers/${driver.userId}`, { token: rider.token });
     assert.equal(assigned.status, 'RESERVED');
@@ -78,7 +81,7 @@ async function pendingTrip(rider, driver, fare) {
     await publish(requested.envelope);
     await request(`${gateway}/trips/${trip.tripId}/start`, { method: 'POST', token: driver.token });
     await request(`${gateway}/trips/${trip.tripId}/complete`, { method: 'POST', token: driver.token, body: { fareAmount: fare } });
-    await tripStatus(trip.tripId, 'PAYMENT_PENDING');
+    await tripStatus(trip.tripId, ['PAYMENT_PENDING', 'CONFIRMED', 'CANCELLED']);
     const completed = await waitFor('trip.completed envelope', () => observed.find(item => item.event.eventType === 'trip.completed' && item.event.payload?.tripId === trip.tripId));
     assert.equal(completed.event.correlationId, correlationId);
     assert.equal(completed.event.payload.riderId, rider.userId);
@@ -169,7 +172,14 @@ async function main() {
         await result(event, driver, 'CANCELLED');
         pass('Payment event survives Trip downtime and is consumed after restart');
         // Trip vừa khởi động lại: chờ Gateway thấy instance mới trên Eureka trước khi đặt chuyến tiếp
-        await waitFor('Gateway routes to restarted trip-service', async () => (await fetch(`${gateway}/trips/ping`, { headers: { Authorization: `Bearer ${rider.token}` }, signal: AbortSignal.timeout(5000) })).ok, 120000);
+        // Gateway giữ danh sách instance cũ tới ~35s (cache LoadBalancer), có thể còn lẫn địa chỉ cũ của container:
+        // chỉ đi tiếp khi 5 lần ping liên tiếp đều thành công.
+        let streak = 0;
+        await waitFor('Gateway routes to restarted trip-service', async () => {
+            const ok = await fetch(`${gateway}/trips/ping`, { headers: { Authorization: `Bearer ${rider.token}` }, signal: AbortSignal.timeout(5000) }).then(r => r.ok, () => false);
+            streak = ok ? streak + 1 : 0;
+            return streak >= 5;
+        }, 120000);
         compose('stop', 'payment_service'); context.paused.add('payment_service');
         const retryTrip = await pendingTrip(rider, driver, 5000000);
         const dlqBefore = (await context.channel.checkQueue(dlq)).messageCount;

@@ -37,6 +37,7 @@ async function flush() {
   finally { flushing = false; }
 }
 async function initialize() {
+  await db.query('ALTER TABLE trips ADD COLUMN IF NOT EXISTS "rejectedDriverIds" UUID[] NOT NULL DEFAULT ARRAY[]::UUID[]');
   await db.query(`CREATE TABLE IF NOT EXISTS processed_events (event_id UUID PRIMARY KEY, event_type VARCHAR(100) NOT NULL, processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS event_outbox (event_id UUID PRIMARY KEY, envelope JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, published_at TIMESTAMPTZ);
     CREATE INDEX IF NOT EXISTS event_outbox_pending_idx ON event_outbox (created_at) WHERE published_at IS NULL;`);
