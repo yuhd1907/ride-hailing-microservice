@@ -42,7 +42,6 @@ const URLS = {
   driver1: `http://${HOST}:${env.DRIVER_SERVICE_PORT_1 || 8082}`,
   driver2: `http://${HOST}:${env.DRIVER_SERVICE_PORT_2 || 18082}`,
 };
-const PAYMENT_MAX = Number(env.PAYMENT_MAX_AMOUNT || 2000000);
 const COMPOSE_ARGS = ['compose', '-f', 'deploy/docker-compose.yml',
   ...(fs.existsSync(path.join(root, '.env')) ? ['--env-file', '.env'] : [])];
 const REQUIRED_APPS = ['API-GATEWAY', 'USER-SERVICE', 'DRIVER-SERVICE', 'TRIP-SERVICE', 'MATCHING-SERVICE', 'PAYMENT-SERVICE', 'NOTIFICATION-SERVICE'];
@@ -52,7 +51,7 @@ const NOTIFICATION_QUEUES = ['matching.driver_assigned', 'payment.succeeded', 'p
 // Điểm đón ngẫu nhiên trong nội thành TP.HCM để mỗi lần chạy không đụng tài xế của lần trước.
 const PICKUP = { lat: round6(10.75 + crypto.randomInt(0, 60000) / 1e6), lng: round6(106.64 + crypto.randomInt(0, 80000) / 1e6) };
 const NEAR = { lat: round6(PICKUP.lat + 0.018), lng: round6(PICKUP.lng + 0.012) }; // khoảng 2,4 km
-const FAR = { lat: round6(PICKUP.lat + 2.0), lng: PICKUP.lng }; // khoảng 220 km, giá vượt hạn mức thanh toán
+const FAR = { lat: round6(PICKUP.lat + 2.0), lng: PICKUP.lng }; // khoảng 220 km, giá vượt số dư ngân hàng ảo của khách demo (500.000 đ)
 function round6(x) { return Math.round(x * 1e6) / 1e6; }
 
 // ---------------------------------------------------------------- Hiển thị
@@ -422,9 +421,10 @@ async function scenario8() {
   await waitTrip(trip3, ctx.riderA, 'CONFIRMED');
   pass(`Đã replay ${replay.replayed} message; chuyến CONFIRMED`);
 
-  act('Bù trừ Saga: chuyến dài có giá vượt hạn mức thanh toán giả lập');
+  act('Bù trừ Saga: chuyến dài có giá vượt số dư ngân hàng ảo của khách');
   const quote = await apiOk('/trips/estimate', { method: 'POST', actor: ctx.riderA, body: { pickup: PICKUP, destination: FAR } });
-  expect(quote.fareAmount > PAYMENT_MAX, `Giá ${vnd(quote.fareAmount)} > hạn mức ${vnd(PAYMENT_MAX)}`, `Giá ${quote.fareAmount} không vượt hạn mức ${PAYMENT_MAX}`);
+  const bank = await apiOk('/payments/bank/me', { actor: ctx.riderA });
+  expect(quote.fareAmount > Number(bank.available), `Giá ${vnd(quote.fareAmount)} > số dư khả dụng ${vnd(bank.available)}`, `Giá ${quote.fareAmount} không vượt số dư khả dụng ${bank.available}`);
   const { trip: trip4, driver } = await rideToCompletion(ctx.riderA, FAR);
   ctx.trip4 = trip4;
   field('Mã chuyến', trip4.tripId);
@@ -457,10 +457,11 @@ async function scenario9() {
     return true;
   }, 60000, 1000);
   pass('Đã xử lý hết message tồn trong queue');
-  const forB = await waitFor('thông báo của chuyến bị gián đoạn', async () => { const items = await notificationsFor(ctx.riderB, ctx.trip2.tripId); return items.some(n => n.type === 'PAYMENT_SUCCEEDED') && items; });
+  // Circuit breaker của Gateway mở 10 giây sau lỗi và có thể mở lại tới khi Gateway thấy instance mới
+  const forB = await waitFor('thông báo của chuyến bị gián đoạn', async () => { const items = await notificationsFor(ctx.riderB, ctx.trip2.tripId); return items.some(n => n.type === 'PAYMENT_SUCCEEDED') && items; }, 90000, 1000);
   for (const n of forB) field(n.type, n.content);
   pass('Khách B nhận thông báo thanh toán của chuyến ở kịch bản 7 — xử lý bù sau khi service chạy lại');
-  const forA = await waitFor('thông báo bù trừ', async () => { const items = await notificationsFor(ctx.riderA, ctx.trip4.tripId); return items.some(n => n.type === 'TRIP_COMPENSATED') && items; });
+  const forA = await waitFor('thông báo bù trừ', async () => { const items = await notificationsFor(ctx.riderA, ctx.trip4.tripId); return items.some(n => n.type === 'TRIP_COMPENSATED') && items; }, 90000, 1000);
   for (const n of forA) field(n.type, n.content);
   pass('Khách A nhận thông báo thanh toán thất bại và chuyến bị hủy của kịch bản 8');
 
