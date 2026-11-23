@@ -50,6 +50,12 @@ spring:
           max-interval: 10s
 
 payment:
+  bank:
+    # Ngân hàng ảo: tài khoản tự tạo với số dư này ở lần dùng đầu (VND)
+    initial-balance: ${PAYMENT_BANK_INITIAL_BALANCE:500000}
+    # Khoản khoá chưa trừ/mở sau thời gian này thì tự mở (lưới an toàn)
+    hold-ttl: ${PAYMENT_BANK_HOLD_TTL:PT2H}
+    expiry-check-interval-ms: 60000
   simulation:
     # Charges above this amount (VND) fail with INSUFFICIENT_FUNDS
     max-amount: ${PAYMENT_MAX_AMOUNT:2000000}
