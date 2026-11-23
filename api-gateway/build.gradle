@@ -25,11 +25,21 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
 
+    // Circuit breaker cho từng service phía sau Gateway (Resilience4j, bản reactive)
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j'
+
     // Redis Reactive cho Gateway (Rate Limiter & Blacklist)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
 
     // Actuator
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Distributed tracing: Micrometer Tracing (Brave) tạo span, gửi sang Zipkin
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+    implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+
+    // Metrics cho Prometheus: mở endpoint /actuator/prometheus
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
     // JWT (JJWT 0.12.x)
     implementation 'io.jsonwebtoken:jjwt-api:0.12.5'

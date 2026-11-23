@@ -1,0 +1,15 @@
+Circuit breaker run 2026-11-16T10:14:31.226Z; gateway=http://127.0.0.1:8080; nạn nhân=driver_service_1
+PASS 1: Ban đầu: 10/10 lần gọi 200, breaker CLOSED, failureRate=0.0%
+PASS 2: Service treo, breaker còn CLOSED: mỗi request phải chờ hết timeout 5s rồi nhận 504: 504/5227ms, 504/5190ms, 504/5214ms, 504/5211ms, 504/5181ms
+PASS 3: Service vẫn treo: breaker OPEN, 5 lần gọi tiếp đều 503 ngay: 503/15ms, 503/19ms, 503/12ms, 503/17ms, 503/15ms
+      body: {"timestamp":"2026-11-16T10:14:40.856547332Z","status":503,"error":"Service Unavailable","message":"Circuit breaker đang mở: driver-service tạm thời bị ngắt, vui lòng thử lại sau","service":"driver-service","circuitState":"OPEN","correlationId":"19d2d559-4717-486e-8eda-d2f132ef4205"}
+PASS 4: Breaker tách theo service: /users/ping vẫn 200 (145ms), breaker user-service CLOSED
+PASS 5: Gateway vẫn healthy (/actuator/health 200) khi một breaker đang OPEN
+PASS 6: Service hết treo: không thao tác gì trên Gateway, lần gọi 200 đầu tiên sau 10s (54ms), breaker tự về CLOSED
+PASS 7: Sau khi hết treo: 10/10 lần gọi 200, breaker CLOSED, failureRate=0.0%
+PASS 8: Service dừng: 5 lần gọi lỗi liên tiếp làm breaker OPEN: 504/5023ms, 504/5037ms, 504/5034ms, 504/5028ms, 504/5029ms
+PASS 9: Service đã dừng: breaker OPEN, 5 lần gọi tiếp đều 503 ngay: 503/14ms, 503/14ms, 503/17ms, 503/26ms, 503/15ms
+      body: {"timestamp":"2026-11-16T10:15:26.317701215Z","status":503,"error":"Service Unavailable","message":"Circuit breaker đang mở: driver-service tạm thời bị ngắt, vui lòng thử lại sau","service":"driver-service","circuitState":"OPEN","correlationId":"8443a3d4-4c0a-43b0-8628-d5606bce6d9d"}
+PASS 10: Service chạy lại: không thao tác gì trên Gateway, lần gọi 200 đầu tiên sau 73s (149ms), breaker tự về CLOSED
+PASS 11: Sau khi chạy lại: 10/10 lần gọi 200, breaker CLOSED, failureRate=0.0%
+RESULT: 11 circuit-breaker checks passed on the real stack.

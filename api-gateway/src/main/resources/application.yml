@@ -29,6 +29,11 @@ spring:
             - Path=/users/ping
           filters:
             - SetPath=/ping
+            - name: CircuitBreaker
+              args:
+                name: user-service
+                fallbackUri: forward:/fallback/user-service
+                statusCodes: 500,502,503,504
 
         - id: driver-ping-route
           uri: lb://DRIVER-SERVICE
@@ -36,6 +41,11 @@ spring:
             - Path=/drivers/ping
           filters:
             - SetPath=/ping
+            - name: CircuitBreaker
+              args:
+                name: driver-service
+                fallbackUri: forward:/fallback/driver-service
+                statusCodes: 500,502,503,504
 
         # === User Service Routes ===
         - id: user-auth-route
@@ -48,6 +58,11 @@ spring:
                 redis-rate-limiter.replenishRate: 10
                 redis-rate-limiter.burstCapacity: 20
                 key-resolver: "#{@ipKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: user-service
+                fallbackUri: forward:/fallback/user-service
+                statusCodes: 500,502,503,504
 
         - id: user-service-route
           uri: lb://USER-SERVICE
@@ -59,11 +74,22 @@ spring:
                 redis-rate-limiter.replenishRate: 10
                 redis-rate-limiter.burstCapacity: 20
                 key-resolver: "#{@ipKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: user-service
+                fallbackUri: forward:/fallback/user-service
+                statusCodes: 500,502,503,504
 
         - id: user-internal-route
           uri: lb://USER-SERVICE
           predicates:
             - Path=/internal/users/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: user-service
+                fallbackUri: forward:/fallback/user-service
+                statusCodes: 500,502,503,504
 
         # === Driver Service Routes (Public) ===
         - id: driver-service-route
@@ -76,12 +102,23 @@ spring:
                 redis-rate-limiter.replenishRate: 10
                 redis-rate-limiter.burstCapacity: 20
                 key-resolver: "#{@ipKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: driver-service
+                fallbackUri: forward:/fallback/driver-service
+                statusCodes: 500,502,503,504
 
         # === Driver Service Routes (Internal - chỉ cho service-to-service) ===
         - id: driver-internal-route
           uri: lb://DRIVER-SERVICE
           predicates:
             - Path=/internal/drivers/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: driver-service
+                fallbackUri: forward:/fallback/driver-service
+                statusCodes: 500,502,503,504
 
         # === Trip Service Route (Điểm cắm cho TV2/TV3) ===
         - id: trip-ping-route
@@ -90,11 +127,22 @@ spring:
             - Path=/trips/ping
           filters:
             - SetPath=/ping
+            - name: CircuitBreaker
+              args:
+                name: trip-service
+                fallbackUri: forward:/fallback/trip-service
+                statusCodes: 500,502,503,504
 
         - id: trip-service-route
           uri: lb://TRIP-SERVICE
           predicates:
             - Path=/trips/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: trip-service
+                fallbackUri: forward:/fallback/trip-service
+                statusCodes: 500,502,503,504
 
         - id: matching-ping-route
           uri: lb://MATCHING-SERVICE
@@ -102,11 +150,22 @@ spring:
             - Path=/matching/ping
           filters:
             - SetPath=/ping
+            - name: CircuitBreaker
+              args:
+                name: matching-service
+                fallbackUri: forward:/fallback/matching-service
+                statusCodes: 500,502,503,504
 
         - id: matching-service-route
           uri: lb://MATCHING-SERVICE
           predicates:
             - Path=/matching/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: matching-service
+                fallbackUri: forward:/fallback/matching-service
+                statusCodes: 500,502,503,504
 
         - id: payment-ping-route
           uri: lb://PAYMENT-SERVICE
@@ -114,11 +173,22 @@ spring:
             - Path=/payments/ping
           filters:
             - SetPath=/ping
+            - name: CircuitBreaker
+              args:
+                name: payment-service
+                fallbackUri: forward:/fallback/payment-service
+                statusCodes: 500,502,503,504
 
         - id: payment-service-route
           uri: lb://PAYMENT-SERVICE
           predicates:
             - Path=/payments/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: payment-service
+                fallbackUri: forward:/fallback/payment-service
+                statusCodes: 500,502,503,504
 
         - id: notification-ping-route
           uri: lb://NOTIFICATION-SERVICE
@@ -126,11 +196,59 @@ spring:
             - Path=/notifications/ping
           filters:
             - SetPath=/ping
+            - name: CircuitBreaker
+              args:
+                name: notification-service
+                fallbackUri: forward:/fallback/notification-service
+                statusCodes: 500,502,503,504
 
         - id: notification-service-route
           uri: lb://NOTIFICATION-SERVICE
           predicates:
             - Path=/notifications/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: notification-service
+                fallbackUri: forward:/fallback/notification-service
+                statusCodes: 500,502,503,504
+
+# Circuit breaker: mỗi service một breaker, dùng chung cho mọi route của service đó.
+# Một lần gọi bị tính là lỗi khi không kết nối được, không có instance, quá
+# timeout-duration, hoặc service trả 500/502/503/504 (statusCodes ở từng route).
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        # Chưa đủ 5 lần gọi thì chưa kết luận; từ 50% lỗi trở lên thì ngắt (OPEN).
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        # OPEN: trả lỗi ngay, không gọi service. Sau 10s tự sang HALF_OPEN, cho 3 lần
+        # gọi thử; thành công thì đóng lại (CLOSED), còn lỗi thì ngắt tiếp.
+        wait-duration-in-open-state: 10s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: true
+    instances:
+      user-service:
+        base-config: default
+      driver-service:
+        base-config: default
+      trip-service:
+        base-config: default
+      matching-service:
+        base-config: default
+      payment-service:
+        base-config: default
+      notification-service:
+        base-config: default
+  timelimiter:
+    configs:
+      default:
+        # Thấp hơn httpclient.response-timeout (10s) để lần gọi treo được tính là lỗi sớm.
+        timeout-duration: 5s
 
 # JWT Configuration
 jwt:
@@ -149,10 +267,29 @@ eureka:
 
 # Actuator
 management:
+  # Metrics cho Prometheus/Grafana: gắn tên service vào mọi metric và xuất histogram
+  # thời gian xử lý request để tính p95.
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  # Distributed tracing: mọi request/message tạo span và gửi sang Zipkin.
+  # correlationId được gắn làm tag của span (xem TracingConfig) để tìm trace theo ID trong log.
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
   endpoints:
     web:
       exposure:
-        include: health, info, gateway
+        include: health, info, gateway, circuitbreakers, circuitbreakerevents, prometheus
+  health:
+    circuitbreakers:
+      enabled: true
   endpoint:
     health:
       show-details: always

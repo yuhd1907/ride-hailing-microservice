@@ -36,13 +36,15 @@ Mỗi service nghiệp vụ dùng một database PostgreSQL riêng (`user_db`, `
 
 Gateway định tuyến bằng `lb://<SERVICE-NAME>` thông qua Eureka và Spring Cloud LoadBalancer. Driver có thể chạy hai instance để kiểm tra cân bằng tải và xử lý yêu cầu giữ tài xế đồng thời. Khi một service dừng, service đó hủy đăng ký Eureka và Gateway trả `503` cho tới khi service chạy lại.
 
+Gateway bọc mọi route `lb://` bằng circuit breaker (Resilience4j), mỗi service một breaker dùng chung cho các route của service đó. Một lần gọi bị tính là lỗi khi không kết nối được, không có instance, quá 5s không trả lời, hoặc service trả `500/502/503/504`. Từ 5 lần gọi trở lên trong 10 lần gần nhất mà có ít nhất 50% lỗi thì breaker mở (`OPEN`): Gateway trả `503` ngay kèm JSON `{"service": ..., "circuitState": "OPEN"}` mà không gọi service. Sau 10s breaker tự sang `HALF_OPEN`, cho 3 lần gọi thử; thành công thì đóng lại, còn lỗi thì mở tiếp. Xem trạng thái tại `GET /actuator/circuitbreakers` của Gateway; cấu hình nằm trong `api-gateway/src/main/resources/application.yml` (mục `resilience4j`).
+
 ## Các thành phần
 
 Các cổng bên dưới là cổng mặc định truy cập từ máy host.
 
 | Thành phần | Cổng | Công nghệ | Vai trò |
 | --- | --- | --- | --- |
-| API Gateway | 8080 | Spring Cloud Gateway | Định tuyến, kiểm tra JWT và blacklist, giới hạn request |
+| API Gateway | 8080 | Spring Cloud Gateway | Định tuyến, kiểm tra JWT và blacklist, giới hạn request, circuit breaker theo service |
 | Eureka Server | 8761 | Spring Cloud Netflix | Service registry và dashboard |
 | User Service | 8081 | Spring Boot | Đăng ký, đăng nhập, đăng xuất và hồ sơ người dùng; route `/auth/**`, `/users/**` |
 | Driver Service | 8082 | Spring Boot | Hồ sơ, trạng thái, vị trí và giữ/giải phóng tài xế; route `/drivers/**` |
@@ -214,6 +216,33 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\tests\phase2-payment-notification.ps1
 ```
 
+## Giám sát: metrics, log tập trung và trace
+
+Nhóm giám sát là tùy chọn, chỉ chạy khi thêm `--profile observability`; không bật thì các service vẫn chạy bình thường. Nhóm này cần thêm khoảng 700 MB RAM cho Docker. Với Docker Desktop dùng WSL 2, giới hạn mặc định là một nửa RAM máy; ở mức 3,5 GB, cả hệ thống kèm nhóm giám sát chạy rất chậm (request có thể quá 5s và làm circuit breaker mở). Nên nâng lên khoảng 5 GB bằng file `%USERPROFILE%\.wslconfig` gồm hai dòng `[wsl2]` và `memory=5GB`, rồi chạy `wsl --shutdown` và mở lại Docker Desktop.
+
+```powershell
+docker compose -f deploy/docker-compose.yml --env-file .env --profile observability up --build -d
+```
+
+| Công cụ | Địa chỉ | Dùng để |
+| --- | --- | --- |
+| Grafana | http://localhost:3000 | Dashboard "RideFlow - Giám sát service": instance đang chạy, trạng thái circuit breaker, số request, lỗi 5xx, thời gian xử lý p95, bộ nhớ và log của mọi service. Xem không cần đăng nhập; tài khoản quản trị lấy từ `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` trong `.env` |
+| Prometheus | http://localhost:9090 | Thu metrics mỗi 15s. Tự tìm instance qua Eureka nên instance thứ hai của Driver được thêm tự động |
+| Loki + Promtail | (xem qua Grafana) | Gom log của mọi container. Tìm theo correlationId bằng ô "Tìm trong log" trên dashboard, hoặc truy vấn `{service=~".+"} \|= "<correlation-id>"` trong Grafana Explore |
+| Zipkin | http://localhost:9411 | Xem trace của request đi qua nhiều service; tìm theo tag `correlationId=<correlation-id>` |
+
+- **Metrics:** service Java mở `/actuator/prometheus`; Trip và Matching mở `/metrics` với cùng tên metric `http_server_requests_seconds` nên dùng chung một dashboard.
+- **Log:** Promtail đọc log qua Docker socket (chỉ đọc), tách trường `level` của log JSON thành nhãn để lọc.
+- **Trace:** năm service Java gửi span sang Zipkin, gồm cả span publish/consume RabbitMQ của Payment và Notification. Trip và Matching (Node.js) chưa gửi span, nên trace bị ngắt ở hai service này; dùng correlationId để nối các đoạn.
+- Cấu hình nằm trong `deploy/observability/`.
+
+Kiểm tra trên hệ thống đang chạy:
+
+```powershell
+node scripts/check-observability.js
+node scripts/check-tracing.js
+```
+
 ## Build và kiểm thử
 
 Build toàn bộ sáu module Java, bao gồm kiểm thử và kiểm tra định dạng:
@@ -242,6 +271,12 @@ node tests/test-redis-geo.js
 # Hai kịch bản dưới cần profile scale và hai instance đã đăng ký Eureka
 node tests/test-concurrency.js
 node scripts/test-load-balancing.js
+
+# Tài xế từ chối chuyến -> sẵn sàng ngay -> Matching ghép tài xế khác (cần npm ci trong trip-service)
+node scripts/check-driver-reject.js
+
+# Circuit breaker: script tự pause/stop rồi bật lại driver_service_1, chạy khoảng 2-3 phút
+node scripts/check-circuit-breaker.js
 ```
 
 ## Tài liệu và vận hành

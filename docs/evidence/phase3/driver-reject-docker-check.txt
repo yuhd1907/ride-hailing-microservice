@@ -1,0 +1,10 @@
+Driver reject run 2026-11-16T10:13:56.796Z; gateway=http://127.0.0.1:8080; pickup=12.358276,100.381422
+PASS 1: Matching giữ tài xế gần nhất A=139e0ad9-724f-4af6-a2be-3c1c0aaa9460 cho tripId=a82fd6ac-a24a-4662-a717-976dd33eb55d (A: RESERVED)
+PASS 2: Chỉ tài xế đang được ghép mới từ chối được: tài xế khác/khách -> 403, không token -> 401; A vẫn RESERVED
+PASS 3: A từ chối: request trả về sau 846 ms, A đã AVAILABLE ngay (không chờ 60s hết hạn giữ chỗ); chuyến về MATCHING
+PASS 4: Matching tìm được tài xế khác B=05e40213-2113-4a2c-9d58-fc35befe140f sau 3261 ms kể từ lúc từ chối (B: RESERVED, A: AVAILABLE)
+PASS 5: A xuất hiện lại trong tìm kiếm tài xế gần (Redis GEO), sẵn sàng nhận chuyến khác
+PASS 6: DB: lịch sử REQUESTED -> AWAITING_DRIVER -> MATCHING -> AWAITING_DRIVER; attemptedDriverIds=[A,B]; đúng 1 event trip.driver_rejected, correlationId=61348d8a-efa1-4380-9180-b726e4172438
+PASS 7: A gọi từ chối lần nữa -> 403, không ảnh hưởng lượt giữ của B
+PASS 8: Chuyến chạy tiếp bình thường với B: start -> (từ chối lúc này bị 409) -> complete -> thanh toán -> CONFIRMED; B AVAILABLE
+RESULT: 8 driver-reject checks passed on the real stack.
