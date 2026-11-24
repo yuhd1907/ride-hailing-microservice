@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Container, EmptyState, ErrorState, PageTitle, Panel, Stat } from '@/components/site/Blocks';
 import Pill from '@/components/site/Pill';
 import { time, vnd } from '@/lib/format';
-import { FAILURE_REASON, PAYMENT_STATUS } from '@/lib/labels';
+import { FAILURE_REASON, PAYMENT_METHOD, PAYMENT_STATUS } from '@/lib/labels';
 import { gateway, requireUser } from '@/lib/server/gateway';
 import type { Payment } from '@/lib/types';
 
@@ -27,7 +27,7 @@ export default async function PassengerPayments() {
       </div>
       <Panel title="Giao dịch" padded={false}>
         {list.length === 0 ? (
-          <EmptyState title="Chưa có giao dịch" description="Cước phí được thanh toán tự động khi chuyến đi kết thúc." />
+          <EmptyState title="Chưa có giao dịch" description="Chuyến thanh toán ngân hàng được trừ tiền tự động khi kết thúc; chuyến tiền mặt hoàn tất khi tài xế xác nhận đã nhận tiền." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -36,6 +36,7 @@ export default async function PassengerPayments() {
                   <th className="px-5 py-3 font-medium">Thời gian</th>
                   <th className="px-5 py-3 font-medium">Mã giao dịch</th>
                   <th className="px-5 py-3 font-medium">Chuyến</th>
+                  <th className="px-5 py-3 font-medium">Phương thức</th>
                   <th className="px-5 py-3 text-right font-medium">Số tiền</th>
                   <th className="px-5 py-3 font-medium">Trạng thái</th>
                 </tr>
@@ -52,6 +53,7 @@ export default async function PassengerPayments() {
                           {p.tripId.slice(0, 8).toUpperCase()}
                         </Link>
                       </td>
+                      <td className="px-5 py-3 text-slate-600">{p.method ? PAYMENT_METHOD[p.method] ?? p.method : '—'}</td>
                       <td className="px-5 py-3 text-right font-semibold">{vnd(p.amount)}</td>
                       <td className="px-5 py-3">
                         <Pill tone={s.tone}>{s.label}</Pill>
