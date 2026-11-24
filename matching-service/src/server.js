@@ -10,7 +10,8 @@ const app = express();
 const events = require('./events');
 const matching = require('./matching');
 const errorDetails = error => error?.message || error?.code || error?.stack || String(error);
-rabbitmq.consume('trip.requested', matching.handle);
+// Trip phát trip.matching_requested sau khi Payment đã xác nhận thanh toán (payment.authorized)
+rabbitmq.consume('trip.matching_requested', matching.handle);
 rabbitmq.consume('trip.driver_rejected', matching.rejected);
 rabbitmq.consume('trip.cancelled', matching.cancelled);
 let outboxTimer;

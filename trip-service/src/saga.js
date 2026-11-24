@@ -3,6 +3,7 @@ const events = require('./events');
 const driver = require('./service-client');
 const { InvalidEvent } = require('./validation');
 const log = require('./logger');
+const vouchers = require('./vouchers');
 async function history(client, trip, status, reason, paymentId = trip.paymentId, driverId = trip.driverId, rejectedDriverIds = trip.rejectedDriverIds || []) {
   const result = await client.query('UPDATE trips SET status=$2, "paymentId"=$3, "driverId"=$4, "rejectedDriverIds"=$6, version=version+1, "updatedAt"=CURRENT_TIMESTAMP WHERE "tripId"=$1 AND version=$5 RETURNING *', [trip.tripId, status, paymentId, driverId, trip.version, rejectedDriverIds]);
   if (result.rowCount !== 1) {
@@ -28,6 +29,7 @@ async function payment(event) {
       if (['CANCELLED', 'FAILED'].includes(trip.status)) return;
       if (trip.status !== 'PAYMENT_PENDING') throw new InvalidEvent(`Cannot compensate ${trip.status}`);
       await history(client, trip, 'CANCELLED', p.reason, p.paymentId);
+      await vouchers.release(client, trip.tripId);
       await driver.release(trip.driverId, event.correlationId, trip.tripId);
       await events.enqueue(client, 'trip.compensated', { tripId: trip.tripId, riderId: trip.passengerId, driverId: trip.driverId, reason: p.reason, compensatedAt: new Date().toISOString() }, event.correlationId);
     }
@@ -56,7 +58,33 @@ async function failed(event) {
     if (trip.passengerId !== p.riderId) throw new InvalidEvent('Failure rider mismatch');
     if (!['REQUESTED', 'MATCHING'].includes(trip.status)) return;
     await history(client, trip, 'FAILED', p.reason, null, null);
+    await vouchers.release(client, trip.tripId);
     await events.enqueue(client, 'trip.failed', { tripId: trip.tripId, riderId: trip.passengerId, reason: p.reason, failedAt: new Date().toISOString() }, event.correlationId);
   });
 }
-module.exports = { payment, assigned, failed, history };
+// Payment đã khoá được tiền (BANK) hoặc chấp nhận tiền mặt: chuyến mới được đưa sang ghép tài xế.
+async function authorized(event) {
+  await events.once(event, async client => {
+    const p = event.payload;
+    const { rows: [trip] } = await client.query('SELECT * FROM trips WHERE "tripId"=$1', [p.tripId]);
+    if (!trip) throw new Error('Trip not found');
+    if (trip.passengerId !== p.riderId) throw new InvalidEvent('Authorization rider mismatch');
+    if (trip.status !== 'REQUESTED') return;
+    await history(client, trip, 'MATCHING', 'payment authorized', null, null);
+    await events.enqueue(client, 'trip.matching_requested', { tripId: trip.tripId, riderId: trip.passengerId, pickup: trip.pickup, destination: trip.destination, vehicleType: trip.vehicleType || 'MOTORCYCLE', fareAmount: Number(trip.fare), requestedAt: new Date().toISOString() }, event.correlationId);
+  });
+}
+// Không khoá được tiền (số dư không đủ): chuyến thất bại trước khi ghép, trả voucher, báo khách.
+async function authorizationFailed(event) {
+  await events.once(event, async client => {
+    const p = event.payload;
+    const { rows: [trip] } = await client.query('SELECT * FROM trips WHERE "tripId"=$1', [p.tripId]);
+    if (!trip) throw new Error('Trip not found');
+    if (trip.passengerId !== p.riderId) throw new InvalidEvent('Authorization rider mismatch');
+    if (trip.status !== 'REQUESTED') return;
+    await history(client, trip, 'FAILED', p.reason, null, null);
+    await vouchers.release(client, trip.tripId);
+    await events.enqueue(client, 'trip.failed', { tripId: trip.tripId, riderId: trip.passengerId, reason: p.reason, failedAt: new Date().toISOString() }, event.correlationId);
+  });
+}
+module.exports = { payment, assigned, failed, authorized, authorizationFailed, history };
