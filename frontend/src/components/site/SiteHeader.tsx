@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { homeOf, type SessionUser } from '@/lib/session';
 import Logo from './Logo';
+import NotificationBell from './NotificationBell';
 import PortalNav from './PortalNav';
 import UserMenu from './UserMenu';
 
@@ -8,6 +9,7 @@ const PASSENGER_NAV = [
   { href: '/khach-hang', label: 'Đặt xe', exact: true },
   { href: '/khach-hang/chuyen-di', label: 'Chuyến đi' },
   { href: '/khach-hang/thanh-toan', label: 'Thanh toán' },
+  { href: '/khach-hang/ngan-hang', label: 'Ngân hàng' },
   { href: '/khach-hang/thong-bao', label: 'Thông báo' },
 ];
 
@@ -41,6 +43,13 @@ export default function SiteHeader({ user }: { user: SessionUser | null }) {
           </nav>
         )}
         <div className="ml-auto flex items-center gap-3">
+          {user?.role && (
+            <NotificationBell
+              userId={user.userId}
+              href={user.role === 'ROLE_DRIVER' ? '/tai-xe/thong-bao' : '/khach-hang/thong-bao'}
+              tripHref={user.role === 'ROLE_DRIVER' ? '/tai-xe/chuyen-di' : '/khach-hang/chuyen-di'}
+            />
+          )}
           {user ? (
             <UserMenu
               name={user.fullName ?? user.email}

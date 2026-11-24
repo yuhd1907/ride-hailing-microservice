@@ -61,6 +61,11 @@ export interface Trip {
   fare: string | number;
   status: TripStatus;
   vehicleType?: VehicleType;
+  paymentMethod?: PaymentMethod;
+  /** Giá trước khi áp voucher; fare là giá cuối khách trả. */
+  originalFare?: string | number | null;
+  discountAmount?: string | number | null;
+  voucherCode?: string | null;
   paymentId: string | null;
   sagaId: string | null;
   createdAt: string;
@@ -69,6 +74,8 @@ export interface Trip {
 
 export type VehicleType = 'MOTORCYCLE' | 'CAR_4_SEAT' | 'CAR_7_SEAT';
 
+export type PaymentMethod = 'BANK' | 'CASH';
+
 export interface FareEstimate {
   estimatedDistance: number;
   fareAmount: number;
@@ -76,6 +83,45 @@ export interface FareEstimate {
   pricingVersion: string;
   vehicleType?: VehicleType;
   options?: FareOption[];
+  /** Chỉ có khi gửi voucherCode: fareAmount là giá sau giảm. */
+  originalFare?: number;
+  discountAmount?: number;
+  voucherCode?: string;
+  voucherApplicable?: boolean;
+  voucherReason?: string | null;
+}
+
+/** Voucher khách còn dùng được (GET /trips/vouchers). */
+export interface Voucher {
+  code: string;
+  description: string;
+  discountType: 'PERCENT' | 'FIXED';
+  value: number;
+  maxDiscount: number | null;
+  minFare: number;
+  vehicleType: VehicleType | null;
+  validFrom: string;
+  validTo: string;
+}
+
+/** Tài khoản ngân hàng ảo của Payment Service: available = balance - held. */
+export interface BankAccount {
+  userId: string;
+  balance: number;
+  held: number;
+  available: number;
+}
+
+export type BankTransactionType = 'TOPUP' | 'HOLD' | 'RELEASE' | 'CAPTURE' | 'ADJUST_UP' | 'ADJUST_DOWN';
+
+export interface BankTransaction {
+  id: string;
+  type: BankTransactionType;
+  amount: number;
+  tripId: string | null;
+  balanceAfter: number;
+  availableAfter: number;
+  createdAt: string;
 }
 
 export interface FareOption extends FareEstimate {
@@ -125,6 +171,7 @@ export interface Payment {
   riderId: string;
   driverId: string;
   amount: number;
+  method?: PaymentMethod;
   status: string;
   failureReason: string | null;
   correlationId: string;

@@ -1,16 +1,16 @@
 'use client';
 
 import clsx from 'clsx';
-import { ArrowRight, Bike, Car, Hand, Loader2, Navigation, RefreshCw, Route, Users } from 'lucide-react';
+import { ArrowRight, Banknote, Bike, Car, Hand, Landmark, Loader2, Navigation, RefreshCw, Route, Ticket, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { call } from '@/lib/client';
 import { vnd } from '@/lib/format';
 import { FALLBACK_CENTER, useBrowserLocation, useReverseGeocoder } from '@/lib/geo';
-import { TRIP_STATUS, VEHICLE } from '@/lib/labels';
+import { TRIP_STATUS, VOUCHER_REASON } from '@/lib/labels';
 import { formatDistance, formatDuration, useRoute } from '@/lib/routes';
-import type { Driver, FareEstimate, FareRate, Point, Trip, VehicleType } from '@/lib/types';
+import type { BankAccount, Driver, FareEstimate, FareRate, PaymentMethod, Point, Trip, VehicleType, Voucher } from '@/lib/types';
 import AddressInput from './AddressInput';
 import Map, { type MapMarker } from './Map';
 import Pill from './Pill';
@@ -40,6 +40,21 @@ export default function BookingClient({
   const [estimating, setEstimating] = useState(false);
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('BANK');
+  const [voucherCode, setVoucherCode] = useState<string | null>(null);
+  const [vouchers, setVouchers] = useState<Voucher[] | null>(null);
+  const [bank, setBank] = useState<BankAccount | null>(null);
+
+  // Voucher còn dùng được (Trip Service) và số dư khả dụng của ngân hàng ảo (Payment Service).
+  const loadWallet = useCallback(async () => {
+    const [v, b] = await Promise.all([call<Voucher[]>('/trips/vouchers'), call<BankAccount>('/payments/bank/me')]);
+    setVouchers(v.ok ? v.data ?? [] : []);
+    setBank(b.ok ? b.data : null);
+  }, []);
+
+  useEffect(() => {
+    void loadWallet();
+  }, [loadWallet]);
 
   // Tài xế sẵn sàng quanh điểm đón: Redis GEO + trạng thái AVAILABLE trong driver_db.
   const loadDrivers = useCallback(async () => {
@@ -60,7 +75,7 @@ export default function BookingClient({
     if (!pickup || !destination) return;
     let cancelled = false;
     setEstimating(true);
-    call<FareEstimate>('/trips/estimate', { body: { pickup, destination } }).then(r => {
+    call<FareEstimate>('/trips/estimate', { body: { pickup, destination, voucherCode: voucherCode ?? undefined } }).then(r => {
       if (cancelled) return;
       setEstimating(false);
       if (r.ok) setEstimate(r.data);
@@ -69,7 +84,7 @@ export default function BookingClient({
     return () => {
       cancelled = true;
     };
-  }, [pickup, destination]);
+  }, [pickup, destination, voucherCode]);
 
   async function fillMyLocation() {
     const point = await locate();
@@ -90,13 +105,14 @@ export default function BookingClient({
     if (!pickup || !destination) return;
     setBooking(true);
     setError(null);
-    const r = await call<Trip>('/trips', { body: { pickup, destination, vehicleType } });
+    const r = await call<Trip>('/trips', { body: { pickup, destination, vehicleType, paymentMethod, voucherCode: voucherCode ?? undefined } });
     if (r.ok && r.data) {
       router.push(`/khach-hang/chuyen-di/${r.data.tripId}`);
       router.refresh();
     } else {
       setError(r.error);
       setBooking(false);
+      void loadWallet();
     }
   }
 
@@ -104,6 +120,8 @@ export default function BookingClient({
   // Báo giá của loại xe đang chọn (Trip Service trả giá của mọi loại xe trong một lần gọi).
   const chosen = estimate?.options?.find(o => o.vehicleType === vehicleType) ?? null;
   const selectedNearby = drivers?.filter(d => d.vehicleType === vehicleType) ?? null;
+  const voucherBlocked = !!voucherCode && chosen?.voucherApplicable === false;
+  const shortOfFunds = paymentMethod === 'BANK' && !!bank && !!chosen && Number(bank.available) < chosen.fareAmount;
 
   const markers: MapMarker[] = [
     ...(pickup ? [{ id: 'pickup', position: pickup, kind: 'pickup' as const, label: pickup.address ?? 'Điểm đón', draggable: true }] : []),
@@ -240,7 +258,10 @@ export default function BookingClient({
                     {estimating ? (
                       <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
                     ) : option ? (
-                      <span className="block text-base font-bold text-slate-900">{vnd(option.fareAmount)}</span>
+                      <>
+                        <span className="block text-base font-bold text-slate-900">{vnd(option.fareAmount)}</span>
+                        {!!option.discountAmount && <span className="block text-xs text-slate-400 line-through">{vnd(option.originalFare)}</span>}
+                      </>
                     ) : (
                       <span className="block text-xs text-slate-400">—</span>
                     )}
@@ -251,11 +272,82 @@ export default function BookingClient({
             {rates.length === 0 && <p className="px-1 text-sm text-slate-500">Chưa tải được bảng giá.</p>}
           </div>
           {chosen && <div className="mt-3 px-1 text-xs text-slate-500">Giá tính theo khoảng cách {chosen.estimatedDistance} km giữa điểm đón và điểm đến.</div>}
+
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <div className="mb-2 px-1 text-sm font-semibold text-slate-900">Thanh toán</div>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Phương thức thanh toán">
+              <MethodButton
+                selected={paymentMethod === 'BANK'}
+                onClick={() => setPaymentMethod('BANK')}
+                icon={<Landmark className="h-4 w-4" />}
+                title="Ngân hàng"
+                detail={bank ? `Khả dụng ${vnd(bank.available)}` : 'Trừ tự động khi kết thúc'}
+              />
+              <MethodButton selected={paymentMethod === 'CASH'} onClick={() => setPaymentMethod('CASH')} icon={<Banknote className="h-4 w-4" />} title="Tiền mặt" detail="Trả tài xế khi đến nơi" />
+            </div>
+            {shortOfFunds && (
+              <p className="mt-2 px-1 text-xs text-amber-700">
+                Số dư khả dụng không đủ cho chuyến này, yêu cầu sẽ bị từ chối.{' '}
+                <Link href="/khach-hang/ngan-hang" className="font-semibold underline">
+                  Nạp thêm tiền
+                </Link>{' '}
+                hoặc chọn tiền mặt.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between px-1 text-sm">
+              <span className="font-semibold text-slate-900">Mã giảm giá</span>
+              {voucherCode && (
+                <button type="button" onClick={() => setVoucherCode(null)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800">
+                  <X className="h-3.5 w-3.5" /> Bỏ chọn
+                </button>
+              )}
+            </div>
+            {vouchers === null ? (
+              <p className="px-1 text-xs text-slate-400">Đang tải mã giảm giá…</p>
+            ) : vouchers.length === 0 ? (
+              <p className="px-1 text-xs text-slate-500">Bạn chưa có mã giảm giá nào dùng được.</p>
+            ) : (
+              <div className="space-y-2" role="radiogroup" aria-label="Mã giảm giá">
+                {vouchers.map(v => {
+                  const selected = voucherCode === v.code;
+                  return (
+                    <button
+                      key={v.code}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setVoucherCode(selected ? null : v.code)}
+                      className={clsx(
+                        'flex w-full items-center gap-3 rounded-xl border border-dashed p-3 text-left transition',
+                        selected ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500' : 'border-slate-300 hover:bg-slate-50',
+                      )}
+                    >
+                      <Ticket className={clsx('h-4 w-4 shrink-0', selected ? 'text-emerald-600' : 'text-slate-400')} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-mono text-sm font-semibold text-slate-900">{v.code}</span>
+                        <span className="block truncate text-xs text-slate-500">{v.description}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {voucherCode && chosen && (
+              <p className={clsx('mt-2 px-1 text-xs', chosen.voucherApplicable ? 'text-emerald-700' : 'text-amber-700')}>
+                {chosen.voucherApplicable
+                  ? `Giảm ${vnd(chosen.discountAmount)}: ${vnd(chosen.originalFare)} → ${vnd(chosen.fareAmount)}`
+                  : `${VOUCHER_REASON[chosen.voucherReason ?? ''] ?? 'Mã không áp dụng được'}. Chọn loại xe khác hoặc bỏ mã.`}
+              </p>
+            )}
+          </div>
           {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
           <button
             type="button"
             onClick={() => void book()}
-            disabled={!chosen || booking || !!activeTrip}
+            disabled={!chosen || booking || !!activeTrip || voucherBlocked}
             className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {booking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}
@@ -263,9 +355,11 @@ export default function BookingClient({
               ? 'Hoàn tất chuyến hiện tại trước'
               : !pickup || !destination
                 ? 'Nhập đủ điểm đón và điểm đến'
-                : chosen
-                  ? `Đặt ${rates.find(r => r.vehicleType === vehicleType)?.displayName.toLowerCase() ?? 'xe'} · ${vnd(chosen.fareAmount)}`
-                  : 'Đặt xe'}
+                : voucherBlocked
+                  ? 'Mã giảm giá không dùng được'
+                  : chosen
+                    ? `Đặt ${rates.find(r => r.vehicleType === vehicleType)?.displayName.toLowerCase() ?? 'xe'} · ${vnd(chosen.fareAmount)} · ${paymentMethod === 'CASH' ? 'tiền mặt' : 'ngân hàng'}`
+                    : 'Đặt xe'}
           </button>
           {pickup && selectedNearby !== null && selectedNearby.length === 0 && (
             <p className="mt-3 text-xs text-amber-700">Hiện chưa có tài xế loại xe này gần bạn. Bạn vẫn có thể đặt; hệ thống sẽ thử ghép, nếu không có sẽ báo không thành công.</p>
@@ -284,5 +378,26 @@ export default function BookingClient({
         />
       </div>
     </div>
+  );
+}
+
+function MethodButton({ selected, onClick, icon, title, detail }: { selected: boolean; onClick: () => void; icon: ReactNode; title: string; detail: string }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onClick}
+      className={clsx(
+        'flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition',
+        selected ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50',
+      )}
+    >
+      <span className={clsx('flex items-center gap-1.5 text-sm font-semibold', selected ? 'text-brand-700' : 'text-slate-900')}>
+        {icon}
+        {title}
+      </span>
+      <span className="text-xs text-slate-500">{detail}</span>
+    </button>
   );
 }

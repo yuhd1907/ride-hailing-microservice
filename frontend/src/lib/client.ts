@@ -31,9 +31,20 @@ const MESSAGES: Record<string, string> = {
   'Trip not found': 'Không tìm thấy chuyến đi.',
   'Invalid pickup or destination': 'Điểm đón hoặc điểm đến không hợp lệ.',
   'Service temporarily unavailable': 'Dịch vụ tạm thời gián đoạn, vui lòng thử lại.',
+  'Invalid paymentMethod': 'Phương thức thanh toán không hợp lệ.',
+  'Voucher đã được dùng': 'Bạn đã dùng mã giảm giá này rồi.',
+};
+
+const VOUCHER_REASON: Record<string, string> = {
+  UNAVAILABLE: 'mã không tồn tại hoặc bạn đã dùng',
+  EXPIRED: 'mã đã hết hạn',
+  VEHICLE_NOT_ELIGIBLE: 'mã không áp dụng cho loại xe này',
+  FARE_TOO_LOW: 'giá chuyến chưa đủ để dùng mã',
 };
 
 function translate(message: string) {
+  const voucher = /^Voucher không áp dụng được \((\w+)\)$/.exec(message);
+  if (voucher) return `Không dùng được mã giảm giá: ${VOUCHER_REASON[voucher[1]] ?? voucher[1]}.`;
   return MESSAGES[message] ?? message;
 }
 

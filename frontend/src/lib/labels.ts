@@ -48,7 +48,35 @@ export const NOTIFICATION_TYPE: Record<string, string> = {
   PAYMENT_SUCCEEDED: 'Thanh toán thành công',
   PAYMENT_FAILED: 'Thanh toán thất bại',
   TRIP_COMPENSATED: 'Chuyến được hoàn tác',
-  TRIP_FAILED: 'Không tìm được tài xế',
+  TRIP_FAILED: 'Chuyến không thành công',
+  TRIP_ACCEPTED: 'Tài xế đã nhận chuyến',
+};
+
+export const PAYMENT_METHOD: Record<string, string> = {
+  BANK: 'Ngân hàng',
+  CASH: 'Tiền mặt',
+};
+
+/** Lý do Trip Service trả khi voucher không áp dụng được cho lựa chọn hiện tại. */
+export const VOUCHER_REASON: Record<string, string> = {
+  UNAVAILABLE: 'Mã không tồn tại hoặc bạn đã dùng',
+  EXPIRED: 'Mã đã hết hạn',
+  VEHICLE_NOT_ELIGIBLE: 'Mã không áp dụng cho loại xe này',
+  FARE_TOO_LOW: 'Giá chuyến chưa đủ để dùng mã',
+};
+
+export const BANK_TX: Record<string, { label: string; sign: 1 | -1 | 0 }> = {
+  TOPUP: { label: 'Nạp tiền', sign: 1 },
+  HOLD: { label: 'Khoá tiền cước', sign: 0 },
+  RELEASE: { label: 'Mở khoá', sign: 0 },
+  CAPTURE: { label: 'Trừ tiền cước', sign: -1 },
+  ADJUST_UP: { label: 'Điều chỉnh tăng', sign: 1 },
+  ADJUST_DOWN: { label: 'Điều chỉnh giảm', sign: -1 },
+};
+
+export const TRIP_REASON: Record<string, string> = {
+  INSUFFICIENT_FUNDS: 'Số dư ngân hàng không đủ',
+  NO_AVAILABLE_DRIVERS: 'Không có tài xế phù hợp',
 };
 
 export const coord = (p: { lat: number; lng: number } | null | undefined) =>
