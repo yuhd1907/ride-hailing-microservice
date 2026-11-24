@@ -1,6 +1,7 @@
 'use strict';
 // Runs against the local Compose stack. Creates isolated test users/trips.
-// Payment results come from the real Payment Service (TV3 Saga).
+// Payment results come from the real Payment Service (TV3 Saga): Payment khoá tiền khi
+// trip.requested, trả payment.authorized thì Trip mới phát trip.matching_requested cho Matching.
 require('../trip-service/node_modules/dotenv').config({ path: require('node:path').join(__dirname, '../.env') });
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -48,7 +49,7 @@ async function broker() {
     context.channel = await context.connection.createConfirmChannel();
     context.channel.on('error', () => {});
     const q = await context.channel.assertQueue('', { exclusive: true });
-    for (const type of ['trip.completed', 'trip.compensated', 'matching.driver_assigned', 'payment.succeeded', 'payment.failed']) await context.channel.bindQueue(q.queue, 'rideflow.events', type);
+    for (const type of ['trip.completed', 'trip.compensated', 'trip.failed', 'trip.matching_requested', 'matching.driver_assigned', 'payment.authorized', 'payment.authorization_failed', 'payment.succeeded', 'payment.failed']) await context.channel.bindQueue(q.queue, 'rideflow.events', type);
     await context.channel.consume(q.queue, msg => { if (msg) observed.push({ event: JSON.parse(msg.content.toString()), properties: msg.properties }); }, { noAck: true });
 }
 async function publish(event) {
@@ -67,22 +68,35 @@ async function tripStatus(tripId, status) {
         return (Array.isArray(status) ? status.includes(trip?.status) : trip?.status === status) && trip;
     });
 }
-async function pendingTrip(rider, driver, fare) {
+// Đặt số dư ngân hàng ảo qua API nội bộ của Payment (cổng 8085, không qua Gateway).
+async function setBalance(rider, amount) {
+    const response = await fetch(`http://127.0.0.1:8085/internal/payments/bank/accounts/${rider.userId}/balance?amount=${amount}`, { method: 'PUT', signal: AbortSignal.timeout(5000) });
+    assert.equal(response.status, 200, `set balance ${amount}: ${response.status}`);
+}
+// failed: sau khi Payment đã khoá tiền, hạ số dư về 0 để lần trừ tiền khi kết thúc chuyến thất bại
+// (payment.failed → Trip bù trừ). beforeComplete chạy ngay trước khi tài xế hoàn thành chuyến.
+async function pendingTrip(rider, driver, { failed = false, beforeComplete } = {}) {
     const correlationId = uuid();
-    // A long route exercises payment failure without allowing client-set prices.
-    const destination = { lat: pickup.lat + (fare > 2000000 ? 3 : 0.01), lng: pickup.lng + 0.01 };
+    await setBalance(rider, 1000000);
+    const destination = { lat: pickup.lat + 0.01, lng: pickup.lng + 0.01 };
     const { data: trip } = await request(`${gateway}/trips`, { method: 'POST', token: rider.token, correlationId, body: { pickup, destination } });
-    fare = Number(trip.fare);
+    const fare = Number(trip.fare);
     await tripStatus(trip.tripId, 'AWAITING_DRIVER');
+    const authorized = await waitFor('payment.authorized', () => observed.find(item => item.event.eventType === 'payment.authorized' && item.event.payload?.tripId === trip.tripId));
+    assert.equal(authorized.event.correlationId, correlationId);
+    assert.equal(Number(authorized.event.payload.amount), fare);
     const { data: assigned } = await request(`${gateway}/drivers/${driver.userId}`, { token: rider.token });
     assert.equal(assigned.status, 'RESERVED');
     assert.equal(assigned.currentTripId, trip.tripId);
     const { rows: [matching] } = await matchingDb.query('SELECT * FROM matching_requests WHERE "tripId"=$1', [trip.tripId]);
     assert.equal(matching.status, 'ASSIGNED');
     assert.equal(matching.selectedDriverId, driver.userId);
-    const { rows: [requested] } = await tripDb.query("SELECT envelope FROM event_outbox WHERE envelope->>'eventType'='trip.requested' AND envelope->'payload'->>'tripId'=$1", [trip.tripId]);
+    // Gửi lại đúng event Matching đã xử lý: Matching bỏ qua, không ghép thêm lần nữa.
+    const { rows: [requested] } = await tripDb.query("SELECT envelope FROM event_outbox WHERE envelope->>'eventType'='trip.matching_requested' AND envelope->'payload'->>'tripId'=$1", [trip.tripId]);
     await publish(requested.envelope);
     await request(`${gateway}/trips/${trip.tripId}/start`, { method: 'POST', token: driver.token });
+    if (failed) await setBalance(rider, 0);
+    if (beforeComplete) await beforeComplete();
     await request(`${gateway}/trips/${trip.tripId}/complete`, { method: 'POST', token: driver.token, body: { fareAmount: fare } });
     await tripStatus(trip.tripId, ['PAYMENT_PENDING', 'CONFIRMED', 'CANCELLED']);
     const completed = await waitFor('trip.completed envelope', () => observed.find(item => item.event.eventType === 'trip.completed' && item.event.payload?.tripId === trip.tripId));
@@ -94,7 +108,7 @@ async function pendingTrip(rider, driver, fare) {
     assert.equal(completed.properties.headers['x-correlation-id'], correlationId);
     const assignment = await waitFor('assignment event', () => observed.find(item => item.event.eventType === 'matching.driver_assigned' && item.event.payload?.tripId === trip.tripId));
     assert.equal(assignment.event.correlationId, correlationId);
-    pass(`Gateway -> Matching -> reserve -> start -> complete; tripId=${trip.tripId}; correlationId=${correlationId}`);
+    pass(`Gateway -> Payment hold -> Matching -> reserve -> start -> complete; tripId=${trip.tripId}; correlationId=${correlationId}`);
     return { ...trip, correlationId, fare };
 }
 async function paymentResult(trip, failed, timeout = 45000) {
@@ -151,8 +165,26 @@ async function main() {
     const denied = await fetch(`${gateway}/internal/drivers/${driver.userId}/release`, { method: 'POST', headers: { Authorization: `Bearer ${rider.token}` } });
     assert.equal(denied.status, 403);
     pass('Gateway blocks /internal');
-    for (const [fare, failed] of [[125000, false], [5000000, true]]) {
-        const trip = await pendingTrip(rider, driver, fare);
+    // Không đủ số dư lúc đặt: Payment từ chối khoá, chuyến FAILED trước khi tìm tài xế.
+    {
+        await setBalance(rider, 1000);
+        const correlationId = uuid();
+        const { data: trip } = await request(`${gateway}/trips`, { method: 'POST', token: rider.token, correlationId, body: { pickup, destination: { lat: pickup.lat + 0.01, lng: pickup.lng + 0.01 } } });
+        const rejected = await waitFor('payment.authorization_failed', () => observed.find(item => item.event.eventType === 'payment.authorization_failed' && item.event.payload?.tripId === trip.tripId));
+        assert.equal(rejected.event.payload.reason, 'INSUFFICIENT_FUNDS');
+        const failedTrip = await tripStatus(trip.tripId, 'FAILED');
+        assert.equal(failedTrip.driverId, null);
+        const tripFailed = await waitFor('trip.failed', () => observed.find(item => item.event.eventType === 'trip.failed' && item.event.payload?.tripId === trip.tripId));
+        assert.equal(tripFailed.event.correlationId, correlationId);
+        assert.equal(tripFailed.event.payload.reason, 'INSUFFICIENT_FUNDS');
+        assert.ok(!observed.some(item => item.event.eventType === 'trip.matching_requested' && item.event.payload?.tripId === trip.tripId));
+        const { data } = await request(`http://127.0.0.1:8082/drivers/${driver.userId}`);
+        assert.equal(data.status, 'AVAILABLE');
+        await notifications(trip.tripId, ['TRIP_FAILED']);
+        pass(`Insufficient funds at booking -> payment.authorization_failed -> Trip FAILED, trip.failed, TRIP_FAILED; no driver held; tripId=${trip.tripId}`);
+    }
+    for (const failed of [false, true]) {
+        const trip = await pendingTrip(rider, driver, { failed });
         const event = await paymentResult(trip, failed);
         await result(event, driver, failed ? 'CANCELLED' : 'CONFIRMED');
         const expected = failed ? ['PAYMENT_FAILED', 'TRIP_COMPENSATED'] : ['PAYMENT_SUCCEEDED'];
@@ -166,8 +198,8 @@ async function main() {
     pass('Malformed event is dead-lettered');
     if (faults) {
         // Payment is paused while the trip completes, then Trip goes down before Payment answers.
-        compose('stop', 'payment_service'); context.paused.add('payment_service');
-        const trip = await pendingTrip(rider, driver, 5000000);
+        const stopPayment = () => { compose('stop', 'payment_service'); context.paused.add('payment_service'); };
+        const trip = await pendingTrip(rider, driver, { failed: true, beforeComplete: stopPayment });
         compose('stop', 'trip_service'); context.paused.add('trip_service');
         compose('start', 'payment_service'); context.paused.delete('payment_service');
         const event = await paymentResult(trip, true, 150000);
@@ -184,8 +216,7 @@ async function main() {
             streak = ok ? streak + 1 : 0;
             return streak >= 5;
         }, 120000);
-        compose('stop', 'payment_service'); context.paused.add('payment_service');
-        const retryTrip = await pendingTrip(rider, driver, 5000000);
+        const retryTrip = await pendingTrip(rider, driver, { failed: true, beforeComplete: stopPayment });
         const dlqBefore = (await context.channel.checkQueue(dlq)).messageCount;
         compose('stop', 'driver_service_1', 'driver_service_2');
         context.paused.add('driver_service_1'); context.paused.add('driver_service_2');

@@ -45,7 +45,7 @@ const URLS = {
 const COMPOSE_ARGS = ['compose', '-f', 'deploy/docker-compose.yml',
   ...(fs.existsSync(path.join(root, '.env')) ? ['--env-file', '.env'] : [])];
 const REQUIRED_APPS = ['API-GATEWAY', 'USER-SERVICE', 'DRIVER-SERVICE', 'TRIP-SERVICE', 'MATCHING-SERVICE', 'PAYMENT-SERVICE', 'NOTIFICATION-SERVICE'];
-const NOTIFICATION_QUEUES = ['matching.driver_assigned', 'payment.succeeded', 'payment.failed', 'trip.compensated', 'trip.failed']
+const NOTIFICATION_QUEUES = ['matching.driver_assigned', 'trip.accepted', 'payment.succeeded', 'payment.failed', 'trip.compensated', 'trip.failed']
   .map(type => `notification-service.${type}`);
 
 // Điểm đón ngẫu nhiên trong nội thành TP.HCM để mỗi lần chạy không đụng tài xế của lần trước.
@@ -309,11 +309,16 @@ async function scenario3() {
   expect(Number(ctx.trip1.fare) === quote.fareAmount, `Giá do server tính và lưu: ${vnd(ctx.trip1.fare)}`, `Giá lưu ${ctx.trip1.fare} khác giá báo ${quote.fareAmount}`);
   const event = await waitFor('trip.requested được publish', async () => { const row = await outboxEvent('trip.requested', ctx.trip1.tripId); return row?.published_at && row; });
   pass(`Event trip.requested ${short(event.event_id)} ghi vào outbox cùng transaction và đã publish lên RabbitMQ`);
-  logHint(['trip_service', 'matching_service'], ctx.trip1.sagaId);
+  act('Payment khoá tiền cước trong ngân hàng ảo rồi trả payment.authorized; Trip chuyển MATCHING và phát trip.matching_requested');
+  const matching = await waitFor('trip.matching_requested được publish', async () => { const row = await outboxEvent('trip.matching_requested', ctx.trip1.tripId); return row?.published_at && row; });
+  const bank = await apiOk('/payments/bank/me', { actor: ctx.riderA });
+  field('Ngân hàng ảo', `số dư ${vnd(bank.balance)}, đang khoá ${vnd(bank.held)}, khả dụng ${vnd(bank.available)}`);
+  expect(Number(bank.held) === Number(ctx.trip1.fare), `Đã khoá đúng ${vnd(ctx.trip1.fare)} cho chuyến; Trip phát trip.matching_requested ${short(matching.event_id)}`, `Đang khoá ${bank.held}, giá chuyến ${ctx.trip1.fare}`);
+  logHint(['trip_service', 'payment_service'], ctx.trip1.sagaId);
 }
 
 async function scenario4() {
-  act(`Matching nhận trip.requested, tìm tài xế gần nhất và giữ tài xế; chờ chuyến ${short(ctx.trip1.tripId)} có tài xế`);
+  act(`Matching nhận trip.matching_requested, tìm tài xế gần nhất và giữ tài xế; chờ chuyến ${short(ctx.trip1.tripId)} có tài xế`);
   const begin = Date.now();
   const trip = await waitTrip(ctx.trip1, ctx.riderA, 'AWAITING_DRIVER');
   field('Thời gian ghép', `${Date.now() - begin} ms`);
@@ -421,20 +426,21 @@ async function scenario8() {
   await waitTrip(trip3, ctx.riderA, 'CONFIRMED');
   pass(`Đã replay ${replay.replayed} message; chuyến CONFIRMED`);
 
-  act('Bù trừ Saga: chuyến dài có giá vượt số dư ngân hàng ảo của khách');
+  act('Bù trừ Saga: chuyến dài có giá vượt số dư khả dụng của khách, Payment từ chối khoá tiền');
   const quote = await apiOk('/trips/estimate', { method: 'POST', actor: ctx.riderA, body: { pickup: PICKUP, destination: FAR } });
   const bank = await apiOk('/payments/bank/me', { actor: ctx.riderA });
   expect(quote.fareAmount > Number(bank.available), `Giá ${vnd(quote.fareAmount)} > số dư khả dụng ${vnd(bank.available)}`, `Giá ${quote.fareAmount} không vượt số dư khả dụng ${bank.available}`);
-  const { trip: trip4, driver } = await rideToCompletion(ctx.riderA, FAR);
+  const trip4 = await bookTrip(ctx.riderA, FAR);
   ctx.trip4 = trip4;
   field('Mã chuyến', trip4.tripId);
-  await waitTrip(trip4, ctx.riderA, 'CANCELLED');
-  const payment = await apiOk(`/payments/trips/${trip4.tripId}`, { actor: ctx.riderA });
-  expect(payment.status === 'FAILED', `Payment FAILED (${payment.failureReason}) → Trip chạy bước bù trừ: chuyến CANCELLED`, `Payment ${payment.status}`);
-  await waitDriver(driver, 'AVAILABLE');
-  pass(`${driver.label} được giải phóng về AVAILABLE`);
-  const compensated = await waitFor('trip.compensated được publish', async () => { const row = await outboxEvent('trip.compensated', trip4.tripId); return row?.published_at && row; });
-  pass(`Trip phát trip.compensated ${short(compensated.event_id)} (cùng correlationId với payment.failed)`);
+  const failed = await waitTrip(trip4, ctx.riderA, 'FAILED');
+  const history = await apiOk(`/trips/${trip4.tripId}/history`, { actor: ctx.riderA });
+  const reason = history.find(h => h.status === 'FAILED')?.reason;
+  expect(reason === 'INSUFFICIENT_FUNDS' && !failed.driverId, 'Payment phát payment.authorization_failed → Trip FAILED (INSUFFICIENT_FUNDS), không giữ tài xế nào', `Chuyến FAILED với lý do ${reason}, tài xế ${failed.driverId}`);
+  const after = await apiOk('/payments/bank/me', { actor: ctx.riderA });
+  expect(Number(after.held) === Number(bank.held) && Number(after.balance) === Number(bank.balance), `Ngân hàng ảo không khoá, không trừ tiền: khả dụng vẫn ${vnd(after.available)}`, `Số dư thay đổi: ${bank.balance}/${bank.held} → ${after.balance}/${after.held}`);
+  const tripFailed = await waitFor('trip.failed được publish', async () => { const row = await outboxEvent('trip.failed', trip4.tripId); return row?.published_at && row; });
+  pass(`Trip phát trip.failed ${short(tripFailed.event_id)} (cùng correlationId với payment.authorization_failed)`);
   logHint(['payment_service', 'trip_service'], trip4.sagaId);
 }
 
@@ -461,9 +467,9 @@ async function scenario9() {
   const forB = await waitFor('thông báo của chuyến bị gián đoạn', async () => { const items = await notificationsFor(ctx.riderB, ctx.trip2.tripId); return items.some(n => n.type === 'PAYMENT_SUCCEEDED') && items; }, 90000, 1000);
   for (const n of forB) field(n.type, n.content);
   pass('Khách B nhận thông báo thanh toán của chuyến ở kịch bản 7 — xử lý bù sau khi service chạy lại');
-  const forA = await waitFor('thông báo bù trừ', async () => { const items = await notificationsFor(ctx.riderA, ctx.trip4.tripId); return items.some(n => n.type === 'TRIP_COMPENSATED') && items; }, 90000, 1000);
+  const forA = await waitFor('thông báo chuyến thất bại', async () => { const items = await notificationsFor(ctx.riderA, ctx.trip4.tripId); return items.some(n => n.type === 'TRIP_FAILED') && items; }, 90000, 1000);
   for (const n of forA) field(n.type, n.content);
-  pass('Khách A nhận thông báo thanh toán thất bại và chuyến bị hủy của kịch bản 8');
+  pass('Khách A nhận thông báo chuyến không thành công vì số dư không đủ của kịch bản 8');
 
   act(`Chống trùng: gửi lại đúng event trip.completed của chuyến ${short(ctx.trip1.tripId)} (cùng eventId)`);
   const original = await outboxEvent('trip.completed', ctx.trip1.tripId);
@@ -553,7 +559,7 @@ async function main() {
     await scenario(5, 'Nhận và hoàn thành chuyến', B, 'Nhận → hoàn thành → Payment thu tiền → Trip xác nhận → Notification báo khách', scenario5);
     await scenario(6, 'Hai khách cùng giữ một tài xế', B, 'Hai yêu cầu đồng thời trên 2 instance: đúng một bên thắng, bên kia nhận 409', scenario6);
     await scenario(7, 'Dừng service giữa luồng', C, 'Notification dừng giữa chuyến: Saga vẫn chạy, thông báo nằm chờ trong queue', scenario7);
-    await scenario(8, 'Retry, DLQ và bù trừ', C, 'Lỗi tạm thời được thử lại rồi vào DLQ và replay; thanh toán thất bại thì hủy chuyến, trả tài xế', scenario8);
+    await scenario(8, 'Retry, DLQ và bù trừ', C, 'Lỗi tạm thời được thử lại rồi vào DLQ và replay; không đủ số dư thì chuyến thất bại ngay khi đặt', scenario8);
     await scenario(9, 'Khởi động lại và xử lý tiếp', C, 'Notification chạy lại xử lý bù message tồn; event gửi lại không bị xử lý hai lần', scenario9);
   } catch (error) {
     if (!results.length || results.at(-1).ok) out(`\n  ${col.red('✘')} ${error.message}`);
