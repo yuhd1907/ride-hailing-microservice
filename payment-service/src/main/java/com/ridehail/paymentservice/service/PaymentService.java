@@ -30,4 +30,11 @@ public interface PaymentService {
 
     List<PaymentResponse> findPaymentsOfTrip(UUID tripId);
 
+    /**
+     * Khách tip cho tài xế của chuyến đã thanh toán thành công (bằng tài khoản ngân hàng ảo).
+     */
+    com.ridehail.paymentservice.dto.response.TipResponse tip(UUID tripId, UUID riderId, java.math.BigDecimal amount);
+
+    com.ridehail.paymentservice.dto.response.TipResponse tipOf(UUID tripId, UUID riderId);
+
 }

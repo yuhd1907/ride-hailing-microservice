@@ -286,6 +286,83 @@ class BankServiceImplTest {
     }
 
     @Test
+    void bankTripCreditsDriverFareMinusCommission() {
+        BankAccount account = lockedAccount("100000", "0");
+
+        this.service.settleDriver(TRIP, USER, new BigDecimal("117000"), false);
+
+        // 20% chiết khấu: 117.000 - 23.400 = 93.600
+        assertEquals(0, new BigDecimal("193600").compareTo(account.getBalance()));
+        BankTransaction tx = savedTransaction();
+        assertEquals(BankTransactionType.EARNING, tx.getType());
+        assertEquals(0, new BigDecimal("93600").compareTo(tx.getAmount()));
+    }
+
+    @Test
+    void cashTripDebitsCommissionEvenBelowZero() {
+        BankAccount account = lockedAccount("10000", "0");
+
+        this.service.settleDriver(TRIP, USER, new BigDecimal("117000"), true);
+
+        assertEquals(0, new BigDecimal("-13400").compareTo(account.getBalance()));
+        assertEquals(BankTransactionType.COMMISSION, savedTransaction().getType());
+    }
+
+    @Test
+    void settlementIsRecordedOncePerTrip() {
+        BankAccount account = lockOnly("100000");
+        when(this.transactions.existsByTripIdAndUserIdAndType(TRIP, USER, BankTransactionType.EARNING)).thenReturn(true);
+
+        this.service.settleDriver(TRIP, USER, new BigDecimal("117000"), false);
+
+        assertEquals(0, new BigDecimal("100000").compareTo(account.getBalance()));
+        verify(this.transactions, never()).save(any());
+    }
+
+    @Test
+    void tipMovesMoneyFromRiderToDriverOncePerTrip() {
+        UUID driverId = UUID.fromString("6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b");
+        BankAccount rider = lockedAccount("100000", "20000");
+        BankAccount driver = new BankAccount(driverId, new BigDecimal("50000"));
+        when(this.accounts.findForUpdate(driverId)).thenReturn(Optional.of(driver));
+        when(this.holds.sumHeldByUserId(driverId)).thenReturn(BigDecimal.ZERO);
+
+        this.service.tip(TRIP, USER, driverId, new BigDecimal("20000"));
+
+        assertEquals(0, new BigDecimal("80000").compareTo(rider.getBalance()));
+        assertEquals(0, new BigDecimal("70000").compareTo(driver.getBalance()));
+        verify(this.transactions, org.mockito.Mockito.times(2)).save(any());
+
+        when(this.transactions.existsByTripIdAndUserIdAndType(TRIP, USER, BankTransactionType.TIP_SENT)).thenReturn(true);
+        assertThrows(com.ridehail.paymentservice.config.exception.ConflictException.class,
+                () -> this.service.tip(TRIP, USER, driverId, new BigDecimal("20000")));
+    }
+
+    @Test
+    void tipNeedsAvailableBalanceAndValidAmount() {
+        UUID driverId = UUID.fromString("6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b");
+        assertThrows(IllegalArgumentException.class, () -> this.service.tip(TRIP, USER, driverId, new BigDecimal("4999")));
+        BankAccount rider = lockedAccount("30000", "20000");
+
+        assertThrows(com.ridehail.paymentservice.config.exception.ConflictException.class,
+                () -> this.service.tip(TRIP, USER, driverId, new BigDecimal("15000")));
+        assertEquals(0, new BigDecimal("30000").compareTo(rider.getBalance()));
+    }
+
+    @Test
+    void withdrawNeedsAvailableBalance() {
+        BankAccount account = lockedAccount("300000", "0");
+        assertThrows(IllegalArgumentException.class, () -> this.service.withdraw(USER, new BigDecimal("49999")));
+        assertThrows(com.ridehail.paymentservice.config.exception.ConflictException.class,
+                () -> this.service.withdraw(USER, new BigDecimal("300001")));
+
+        this.service.withdraw(USER, new BigDecimal("200000"));
+
+        assertEquals(0, new BigDecimal("100000").compareTo(account.getBalance()));
+        assertEquals(BankTransactionType.WITHDRAW, savedTransaction().getType());
+    }
+
+    @Test
     void setBalanceRecordsAdjustment() {
         BankAccount account = lockedAccount("300000", "0");
 

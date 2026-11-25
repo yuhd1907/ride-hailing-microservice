@@ -58,6 +58,24 @@ public class PaymentController {
         return ResponseEntity.ok(this.paymentService.confirmCash(tripId, driverId));
     }
 
+    /**
+     * Khách tip cho tài xế sau chuyến (tiền từ tài khoản ngân hàng ảo sang ví tài xế).
+     */
+    @PostMapping("/trips/{tripId}/tip")
+    public ResponseEntity<com.ridehail.paymentservice.dto.response.TipResponse> tip(@PathVariable UUID tripId,
+            @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId,
+            @RequestHeader(value = BankController.ROLES_HEADER, required = false) String roles,
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody com.ridehail.paymentservice.dto.request.TipRequest request) {
+        UUID riderId = BankController.requireRole(userId, roles, "ROLE_PASSENGER");
+        return ResponseEntity.ok(this.paymentService.tip(tripId, riderId, request.amount()));
+    }
+
+    @GetMapping("/trips/{tripId}/tip")
+    public ResponseEntity<com.ridehail.paymentservice.dto.response.TipResponse> tipOf(@PathVariable UUID tripId,
+            @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId) {
+        return ResponseEntity.ok(this.paymentService.tipOf(tripId, requireUser(userId)));
+    }
+
     @GetMapping("/{paymentId}")
     public ResponseEntity<PaymentResponse> payment(@PathVariable UUID paymentId,
             @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId) {
