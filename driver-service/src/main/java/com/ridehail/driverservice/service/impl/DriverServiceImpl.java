@@ -220,6 +220,11 @@ public class DriverServiceImpl implements DriverService {
         }).map(driver -> {
             DriverResponse resp = driverMapper.toResponse(driver);
             resp.setDistance(distanceMap.get(driver.getId()));
+            DriverLocation location = storedLocations.get(driver.getId());
+            if (location != null) {
+                resp.setLatitude(location.getLatitude());
+                resp.setLongitude(location.getLongitude());
+            }
             return resp;
         })
             .sorted((a, b) -> Double.compare(a.getDistance(), b.getDistance())) // Gần
@@ -533,6 +538,16 @@ public class DriverServiceImpl implements DriverService {
             }
             locationService.updateLocation(driverId, location.getLatitude(), location.getLongitude());
         });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.ridehail.driverservice.dto.response.DriverLocationResponse getLocation(UUID driverId) {
+        requireDriverExists(driverId);
+        DriverLocation location = driverLocationRepository.findById(driverId)
+            .orElseThrow(() -> new DriverNotFoundException("Tài xế chưa gửi vị trí: " + driverId));
+        return new com.ridehail.driverservice.dto.response.DriverLocationResponse(driverId, location.getLatitude(),
+                location.getLongitude(), location.getUpdatedAt(), isLocationStale(location));
     }
 
     private boolean isLocationStale(DriverLocation location) {

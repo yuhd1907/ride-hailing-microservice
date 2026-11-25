@@ -26,6 +26,11 @@ public class DriverResponse {
 
     private Double distance; // Khoảng cách từ khách (km) - chỉ có khi tìm kiếm nearby
 
+    // Vị trí gần nhất của tài xế - chỉ có khi tìm kiếm nearby (bản đồ nhu cầu đếm tài xế theo ô)
+    private Double latitude;
+
+    private Double longitude;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -119,6 +124,22 @@ public class DriverResponse {
 
     public void setDistance(Double distance) {
         this.distance = distance;
+    }
+
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+    }
+
+    public Double getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
     }
 
     public LocalDateTime getCreatedAt() {
