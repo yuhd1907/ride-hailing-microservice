@@ -40,5 +40,10 @@ async function initialize() {
   await db.query(`CREATE TABLE IF NOT EXISTS processed_events (event_id UUID PRIMARY KEY, event_type VARCHAR(100) NOT NULL, processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS event_outbox (event_id UUID PRIMARY KEY, envelope JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, published_at TIMESTAMPTZ);
     CREATE INDEX IF NOT EXISTS event_outbox_pending_idx ON event_outbox (created_at) WHERE published_at IS NULL;`);
+  // Tìm tài xế trong tối đa 3 phút: thời điểm bắt đầu tìm, lần tìm lại kế tiếp và ngữ cảnh yêu cầu.
+  await db.query(`ALTER TABLE matching_requests ADD COLUMN IF NOT EXISTS "searchStartedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE matching_requests ADD COLUMN IF NOT EXISTS "nextAttemptAt" TIMESTAMPTZ;
+    ALTER TABLE matching_requests ADD COLUMN IF NOT EXISTS context JSONB;
+    CREATE INDEX IF NOT EXISTS matching_requests_waiting_idx ON matching_requests ("nextAttemptAt") WHERE status = 'PENDING' AND "selectedDriverId" IS NULL;`);
 }
 module.exports = { transaction, enqueue, once, flush, initialize };

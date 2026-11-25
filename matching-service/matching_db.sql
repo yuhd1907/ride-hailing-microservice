@@ -12,6 +12,13 @@ CREATE TABLE matching_requests (
 
 CREATE INDEX matching_requests_status_idx ON matching_requests (status);
 
+-- Tìm tài xế trong tối đa 3 phút (runtime cũng áp dụng migration này cho DB đã có dữ liệu).
+ALTER TABLE matching_requests ADD COLUMN IF NOT EXISTS "searchStartedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE matching_requests ADD COLUMN IF NOT EXISTS "nextAttemptAt" TIMESTAMPTZ;
+ALTER TABLE matching_requests ADD COLUMN IF NOT EXISTS context JSONB;
+CREATE INDEX IF NOT EXISTS matching_requests_waiting_idx
+    ON matching_requests ("nextAttemptAt") WHERE status = 'PENDING' AND "selectedDriverId" IS NULL;
+
 -- Phase 2: runtime also applies this additive migration for existing databases.
 CREATE TABLE IF NOT EXISTS processed_events (
     event_id UUID PRIMARY KEY,
