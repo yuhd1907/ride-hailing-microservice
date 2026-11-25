@@ -26,7 +26,7 @@ export interface MapCell {
 }
 
 const STYLE: Record<MarkerKind, { background: string; glyph: string }> = {
-  pickup: { background: '#2557e0', glyph: 'A' },
+  pickup: { background: '#000000', glyph: 'A' },
   destination: { background: '#e11d48', glyph: 'B' },
   me: { background: '#7c3aed', glyph: '●' },
   // Tài xế: xe máy / ô tô (tài xế rảnh quanh điểm đón, hoặc tài xế của chuyến đang tới).
@@ -122,7 +122,7 @@ export default function MapView({
         <>
           {/* Viền trắng bên dưới giúp lộ trình nổi trên nền bản đồ. */}
           <Polyline key={`${routePath}-casing`} encodedPath={routePath} strokeColor="#ffffff" strokeOpacity={1} strokeWeight={9} zIndex={1} />
-          <Polyline key={routePath} encodedPath={routePath} strokeColor="#2557e0" strokeOpacity={1} strokeWeight={5} zIndex={2} />
+          <Polyline key={routePath} encodedPath={routePath} strokeColor="#000000" strokeOpacity={1} strokeWeight={5} zIndex={2} />
         </>
       ) : (
         route && (
@@ -130,7 +130,7 @@ export default function MapView({
             path={route.map(p => ({ lat: p.lat, lng: p.lng }))}
             geodesic
             strokeOpacity={0}
-            icons={[{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.7, strokeColor: '#2557e0', scale: 3 }, offset: '0', repeat: '14px' }]}
+            icons={[{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.7, strokeColor: '#000000', scale: 3 }, offset: '0', repeat: '14px' }]}
           />
         )
       )}

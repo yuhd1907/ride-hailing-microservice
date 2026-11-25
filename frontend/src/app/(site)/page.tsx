@@ -22,7 +22,7 @@ export default function HomePage() {
 
   return (
     <main>
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-brand-700 text-white">
+      <section className="relative overflow-hidden bg-black text-white">
         <div className="mx-auto grid max-w-7xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:py-28">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-brand-100 ring-1 ring-white/20">
@@ -34,7 +34,7 @@ export default function HomePage() {
               <span className="text-brand-100">biết giá trước khi đi.</span>
             </h1>
             <p className="mt-5 max-w-xl text-lg text-slate-300">
-              RideFlow kết nối bạn với tài xế gần nhất. Mỗi tài xế chỉ nhận một chuyến tại một thời điểm, nên chuyến của bạn luôn được giữ đúng người.
+              Gogo kết nối bạn với tài xế gần nhất. Mỗi tài xế chỉ nhận một chuyến tại một thời điểm, nên chuyến của bạn luôn được giữ đúng người.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href={bookHref} className="rounded-xl bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow hover:bg-brand-50">
@@ -64,7 +64,7 @@ export default function HomePage() {
                     <div className="text-sm font-medium">Chọn trên bản đồ</div>
                   </div>
                 </div>
-                <div className="flex items-center justify-between rounded-2xl bg-brand-600 p-4">
+                <div className="flex items-center justify-between rounded-2xl bg-neutral-800 p-4">
                   <div>
                     <div className="text-xs text-brand-100">Giá cước</div>
                     <div className="text-lg font-bold">Hiển thị trước khi đặt</div>
@@ -112,12 +112,12 @@ export default function HomePage() {
       </section>
 
       <section id="tai-xe" className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
-        <div className="flex flex-col items-start justify-between gap-6 rounded-3xl bg-slate-900 p-10 text-white md:flex-row md:items-center">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-3xl bg-black p-10 text-white md:flex-row md:items-center">
           <div>
-            <h2 className="text-2xl font-bold">Lái xe cùng RideFlow</h2>
+            <h2 className="text-2xl font-bold">Lái xe cùng Gogo</h2>
             <p className="mt-2 max-w-xl text-slate-300">Tự chọn giờ làm, bật nhận cuốc khi sẵn sàng, xem thu nhập theo từng chuyến đã hoàn thành.</p>
           </div>
-          <Link href={user ? homeOf(user.role) : '/dang-ky?vai-tro=tai-xe'} className="rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold hover:bg-brand-500">
+          <Link href={user ? homeOf(user.role) : '/dang-ky?vai-tro=tai-xe'} className="rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black hover:bg-neutral-200">
             {user ? 'Vào tài khoản' : 'Đăng ký tài xế'}
           </Link>
         </div>

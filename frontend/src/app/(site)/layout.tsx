@@ -14,7 +14,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
       <div className="flex-1">
         <MapsProvider>{children}</MapsProvider>
       </div>
-      <Footer />
+      <Footer user={user} />
     </div>
   );
 }

@@ -21,7 +21,7 @@ export default async function PassengerPayments() {
       <PageTitle title="Thanh toán" subtitle="Lịch sử giao dịch của các chuyến đi" />
       {payments.error && <ErrorState message={payments.error} />}
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
-        <Stat label="Số dư khả dụng" value={bank.data ? vnd(bank.data.available) : '—'} hint={bank.data && Number(bank.data.held) > 0 ? `Đang tạm giữ ${vnd(bank.data.held)}` : 'Tài khoản RideFlow'} />
+        <Stat label="Số dư khả dụng" value={bank.data ? vnd(bank.data.available) : '—'} hint={bank.data && Number(bank.data.held) > 0 ? `Đang tạm giữ ${vnd(bank.data.held)}` : 'Tài khoản Gogo'} />
         <Stat label="Tổng đã chi" value={vnd(total)} />
         <Stat label="Giao dịch thành công" value={paid.length} />
         <Stat label="Giao dịch thất bại" value={list.filter(p => p.status === 'FAILED').length} />

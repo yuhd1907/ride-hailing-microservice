@@ -72,7 +72,7 @@ const HINT: Partial<Record<TripStatus, Record<Viewer, string>>> = {
   MATCHING: { passenger: 'Hệ thống đang tìm tài xế gần bạn nhất…', driver: '' },
   AWAITING_DRIVER: { passenger: 'Đã tìm thấy tài xế, đang chờ tài xế xác nhận.', driver: 'Bạn có cuốc mới. Xác nhận trong 60 giây, quá hạn cuốc sẽ được chuyển cho tài xế khác.' },
   PAYMENT_PENDING: { passenger: 'Chuyến đã kết thúc, đang thanh toán.', driver: 'Đã kết thúc chuyến, đang chờ thanh toán.' },
-  CONFIRMED: { passenger: 'Chuyến đi hoàn tất. Cảm ơn bạn đã sử dụng RideFlow!', driver: 'Chuyến đã hoàn tất và được thanh toán.' },
+  CONFIRMED: { passenger: 'Chuyến đi hoàn tất. Cảm ơn bạn đã sử dụng Gogo!', driver: 'Chuyến đã hoàn tất và được thanh toán.' },
   CANCELLED: { passenger: 'Chuyến đã được hủy.', driver: 'Khách đã hủy chuyến.' },
   FAILED: { passenger: 'Rất tiếc, chưa tìm được tài xế hoặc thanh toán không thành công.', driver: 'Chuyến không thành công.' },
 };
@@ -201,14 +201,14 @@ export default function TripTracker({ viewer, initialTrip, initialHistory }: { v
 
   // Nội dung hành trình gửi người thân (chia sẻ hoặc tin nhắn SMS).
   function shareText() {
-    return `Mình đang đi RideFlow${driver ? ` với tài xế ${driver.fullName}, xe ${driver.licensePlate}` : ''}. Từ: ${pickupName ?? coord(trip.pickup)}. Đến: ${destinationName ?? coord(trip.destination)}. Bản đồ: https://www.google.com/maps/dir/?api=1&origin=${trip.pickup.lat},${trip.pickup.lng}&destination=${trip.destination.lat},${trip.destination.lng}`;
+    return `Mình đang đi Gogo${driver ? ` với tài xế ${driver.fullName}, xe ${driver.licensePlate}` : ''}. Từ: ${pickupName ?? coord(trip.pickup)}. Đến: ${destinationName ?? coord(trip.destination)}. Bản đồ: https://www.google.com/maps/dir/?api=1&origin=${trip.pickup.lat},${trip.pickup.lng}&destination=${trip.destination.lat},${trip.destination.lng}`;
   }
 
   // Chia sẻ hành trình cho người thân: dùng Web Share nếu có, không thì sao chép.
   async function shareTrip() {
     const text = shareText();
     try {
-      if (navigator.share) await navigator.share({ title: 'Hành trình RideFlow', text });
+      if (navigator.share) await navigator.share({ title: 'Hành trình Gogo', text });
       else {
         await navigator.clipboard.writeText(text);
         setShared('Đã sao chép thông tin hành trình, gửi cho người thân của bạn.');
@@ -758,7 +758,7 @@ function TipPanel({ tripId, driverName }: { tripId: string; driverName: string |
   }, [tripId]);
 
   async function send() {
-    if (!window.confirm(`Tip ${vnd(amount)} cho ${driverName ?? 'tài xế'}? Tiền được trừ từ tài khoản ngân hàng RideFlow của bạn.`)) return;
+    if (!window.confirm(`Tip ${vnd(amount)} cho ${driverName ?? 'tài xế'}? Tiền được trừ từ tài khoản ngân hàng Gogo của bạn.`)) return;
     setBusy(true);
     setError(null);
     const r = await call<TipInfo>(`/payments/trips/${tripId}/tip`, { body: { amount } });

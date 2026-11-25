@@ -9,12 +9,14 @@ const config: Config = {
         mono: ['"Cascadia Code"', 'Consolas', 'ui-monospace', 'monospace'],
       },
       colors: {
+        // Tone đen trắng tối giản: nút và điểm nhấn màu đen, nền nhấn xám rất nhạt.
         brand: {
-          50: '#eef4ff',
-          100: '#dbe6fe',
-          500: '#3b6ef5',
-          600: '#2557e0',
-          700: '#1d45b5',
+          50: '#f3f3f3',
+          100: '#e8e8e8',
+          500: '#545454',
+          600: '#000000',
+          700: '#2b2b2b',
+          800: '#161616',
         },
       },
     },

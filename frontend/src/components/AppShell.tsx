@@ -83,7 +83,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <Activity className="h-4 w-4" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-semibold text-white">RideFlow Console</div>
+            <div className="text-sm font-semibold text-white">Gogo Console</div>
             <div className="text-[11px] text-slate-400">Kiểm thử microservice</div>
           </div>
         </div>
