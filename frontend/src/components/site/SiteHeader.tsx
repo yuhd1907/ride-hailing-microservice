@@ -11,13 +11,17 @@ const PASSENGER_NAV = [
   { href: '/khach-hang/thanh-toan', label: 'Thanh toán' },
   { href: '/khach-hang/ngan-hang', label: 'Ngân hàng' },
   { href: '/khach-hang/thong-bao', label: 'Thông báo' },
+  { href: '/khach-hang/tro-giup', label: 'Trợ giúp' },
 ];
 
 const DRIVER_NAV = [
   { href: '/tai-xe', label: 'Bảng điều khiển', exact: true },
   { href: '/tai-xe/chuyen-di', label: 'Chuyến đã chạy' },
   { href: '/tai-xe/thu-nhap', label: 'Thu nhập' },
+  { href: '/tai-xe/vi', label: 'Ví' },
+  { href: '/tai-xe/hieu-suat', label: 'Hiệu suất' },
   { href: '/tai-xe/thong-bao', label: 'Thông báo' },
+  { href: '/tai-xe/tro-giup', label: 'Trợ giúp' },
   { href: '/tai-xe/phuong-tien', label: 'Phương tiện' },
 ];
 

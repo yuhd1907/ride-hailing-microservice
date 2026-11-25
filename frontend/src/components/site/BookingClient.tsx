@@ -1,19 +1,20 @@
 'use client';
 
 import clsx from 'clsx';
-import { ArrowRight, Banknote, Bike, Car, Hand, Landmark, Loader2, Navigation, RefreshCw, Route, Ticket, Users, X } from 'lucide-react';
+import { ArrowRight, Banknote, Bike, Car, Hand, Landmark, Loader2, MessageSquareText, Navigation, RefreshCw, Route, Ticket, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { call } from '@/lib/client';
 import { vnd } from '@/lib/format';
 import { FALLBACK_CENTER, useBrowserLocation, useReverseGeocoder } from '@/lib/geo';
-import { TRIP_STATUS, VOUCHER_REASON } from '@/lib/labels';
+import { TRIP_STATUS, VEHICLE, VOUCHER_REASON } from '@/lib/labels';
 import { formatDistance, formatDuration, useRoute } from '@/lib/routes';
 import type { BankAccount, Driver, FareEstimate, FareRate, PaymentMethod, Point, Trip, VehicleType, Voucher } from '@/lib/types';
 import AddressInput from './AddressInput';
 import Map, { type MapMarker } from './Map';
 import Pill from './Pill';
+import { PriceBreakdown, PriceReasons, SurgeBadge } from './PriceBreakdown';
 
 const SEARCH_RADIUS_KM = 5;
 
@@ -22,19 +23,27 @@ export default function BookingClient({
   activeTrip,
   rates,
   loadError,
+  initialPickup = null,
+  initialDestination = null,
+  initialVehicleType = null,
 }: {
   firstName: string;
   activeTrip: Trip | null;
   rates: FareRate[];
   loadError: string | null;
+  /** "Đặt lại chuyến": điểm đón/đến và loại xe của chuyến cũ. */
+  initialPickup?: Point | null;
+  initialDestination?: Point | null;
+  initialVehicleType?: VehicleType | null;
 }) {
-  const [vehicleType, setVehicleType] = useState<VehicleType>(rates[0]?.vehicleType ?? 'MOTORCYCLE');
+  const [vehicleType, setVehicleType] = useState<VehicleType>(initialVehicleType ?? rates[0]?.vehicleType ?? 'MOTORCYCLE');
   const router = useRouter();
   // Không tự lấy GPS: khách nhập địa chỉ trước, chỉ định vị khi bấm "Vị trí của tôi".
   const { location, status: geoStatus, locate } = useBrowserLocation(false);
   const reverse = useReverseGeocoder();
-  const [pickup, setPickup] = useState<Point | null>(null);
-  const [destination, setDestination] = useState<Point | null>(null);
+  const [pickup, setPickup] = useState<Point | null>(initialPickup);
+  const [destination, setDestination] = useState<Point | null>(initialDestination);
+  const [note, setNote] = useState('');
   const [drivers, setDrivers] = useState<Driver[] | null>(null);
   const [estimate, setEstimate] = useState<FareEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
@@ -44,6 +53,8 @@ export default function BookingClient({
   const [voucherCode, setVoucherCode] = useState<string | null>(null);
   const [vouchers, setVouchers] = useState<Voucher[] | null>(null);
   const [bank, setBank] = useState<BankAccount | null>(null);
+  const [toppingUp, setToppingUp] = useState<number | null>(null);
+  const [quoteRound, setQuoteRound] = useState(0);
 
   // Voucher còn dùng được (Trip Service) và số dư khả dụng của ngân hàng ảo (Payment Service).
   const loadWallet = useCallback(async () => {
@@ -55,6 +66,15 @@ export default function BookingClient({
   useEffect(() => {
     void loadWallet();
   }, [loadWallet]);
+
+  // Nạp nhanh khi số dư không đủ, không phải rời trang đặt xe.
+  async function topUp(amount: number) {
+    setToppingUp(amount);
+    const r = await call<BankAccount>('/payments/bank/me/topup', { body: { amount } });
+    setToppingUp(null);
+    if (r.ok) setBank(r.data);
+    else setError(r.error);
+  }
 
   // Tài xế sẵn sàng quanh điểm đón: Redis GEO + trạng thái AVAILABLE trong driver_db.
   const loadDrivers = useCallback(async () => {
@@ -69,9 +89,20 @@ export default function BookingClient({
     return () => window.clearInterval(id);
   }, [loadDrivers]);
 
-  // Giá cước do Trip Service tính; client không tự tính.
+  // Báo giá có hiệu lực 120 giây: tự báo giá lại mỗi 90 giây để quoteId gửi khi đặt luôn còn hạn.
+  useEffect(() => {
+    if (!pickup || !destination) return;
+    const id = window.setInterval(() => setQuoteRound(n => n + 1), 90_000);
+    return () => window.clearInterval(id);
+  }, [pickup, destination]);
+
+  // Đổi điểm đón/đến hoặc mã giảm giá thì bỏ giá cũ; lần báo giá lại định kỳ vẫn giữ giá đang hiển thị.
   useEffect(() => {
     setEstimate(null);
+  }, [pickup, destination, voucherCode]);
+
+  // Giá cước do Trip Service tính (giá động); client không tự tính.
+  useEffect(() => {
     if (!pickup || !destination) return;
     let cancelled = false;
     setEstimating(true);
@@ -84,7 +115,7 @@ export default function BookingClient({
     return () => {
       cancelled = true;
     };
-  }, [pickup, destination, voucherCode]);
+  }, [pickup, destination, voucherCode, quoteRound]);
 
   async function fillMyLocation() {
     const point = await locate();
@@ -102,32 +133,60 @@ export default function BookingClient({
   }
 
   async function book() {
-    if (!pickup || !destination) return;
+    if (!pickup || !destination || !chosen || shortOfFunds) return;
     setBooking(true);
     setError(null);
-    const r = await call<Trip>('/trips', { body: { pickup, destination, vehicleType, paymentMethod, voucherCode: voucherCode ?? undefined } });
+    // Gửi quoteId để khóa đúng giá khách đang thấy (voucher được trừ trên giá đã khóa).
+    const r = await call<Trip>('/trips', { body: { quoteId: chosen.quoteId, pickup, destination, vehicleType, paymentMethod, voucherCode: voucherCode ?? undefined, note: note.trim() || undefined } });
     if (r.ok && r.data) {
       router.push(`/khach-hang/chuyen-di/${r.data.tripId}`);
       router.refresh();
-    } else {
-      setError(r.error);
-      setBooking(false);
-      void loadWallet();
+      return;
     }
+    setError(r.error);
+    setBooking(false);
+    void loadWallet();
+    // Báo giá hết hạn / thay đổi: lấy giá mới để khách xem lại trước khi đặt.
+    if (r.status === 409) setQuoteRound(n => n + 1);
   }
+
+  // Danh sách loại xe lấy từ bảng giá; nếu lần tải bảng giá lỗi thì dựng lại từ báo giá (cũng do server trả).
+  const vehicles: FareRate[] = rates.length
+    ? rates
+    : (estimate?.options ?? []).map(o => ({ vehicleType: o.vehicleType, displayName: o.displayName, seats: o.seats, baseFare: 0, perKm: 0 }));
 
   const { route, loading: routing } = useRoute(pickup, destination);
   // Báo giá của loại xe đang chọn (Trip Service trả giá của mọi loại xe trong một lần gọi).
   const chosen = estimate?.options?.find(o => o.vehicleType === vehicleType) ?? null;
   const selectedNearby = drivers?.filter(d => d.vehicleType === vehicleType) ?? null;
   const voucherBlocked = !!voucherCode && chosen?.voucherApplicable === false;
-  const shortOfFunds = paymentMethod === 'BANK' && !!bank && !!chosen && Number(bank.available) < chosen.fareAmount;
+  // Trả bằng ngân hàng thì số dư khả dụng phải đủ giá cước; Payment cũng kiểm tra lại khi khóa tiền.
+  const shortfall = paymentMethod === 'BANK' && bank && chosen ? Math.max(0, Number(chosen.fareAmount) - Number(bank.available)) : 0;
+  const shortOfFunds = shortfall > 0;
 
+  // Tài xế rảnh quanh điểm đón (Driver Service trả kèm vị trí GPS gần nhất): xe máy / ô tô trên bản đồ.
+  const nearbyMarkers: MapMarker[] = (drivers ?? []).flatMap(d =>
+    d.latitude != null && d.longitude != null
+      ? [
+          {
+            id: `driver-${d.id}`,
+            position: { lat: d.latitude, lng: d.longitude },
+            kind: d.vehicleType === 'MOTORCYCLE' ? ('bike' as const) : ('car' as const),
+            label: `${VEHICLE[d.vehicleType] ?? d.vehicleType} · ${d.licensePlate}${d.distance != null ? ` · cách ${d.distance.toFixed(1)} km` : ''}`,
+          },
+        ]
+      : [],
+  );
   const markers: MapMarker[] = [
+    ...nearbyMarkers,
     ...(pickup ? [{ id: 'pickup', position: pickup, kind: 'pickup' as const, label: pickup.address ?? 'Điểm đón', draggable: true }] : []),
     ...(destination ? [{ id: 'destination', position: destination, kind: 'destination' as const, label: destination.address ?? 'Điểm đến', draggable: true }] : []),
   ];
-  const fitPoints = [pickup, destination].filter(Boolean) as Point[];
+  // Mới có điểm đón: thu bản đồ vừa điểm đón và các tài xế đúng loại xe đang chọn để khách thấy xe quanh mình.
+  const fitPoints =
+    pickup && !destination
+      ? [pickup, ...nearbyMarkers.filter(m => (vehicleType === 'MOTORCYCLE') === (m.kind === 'bike')).map(m => m.position)]
+      : ([pickup, destination].filter(Boolean) as Point[]);
 
   return (
     <div className="mx-auto grid max-w-7xl gap-0 lg:grid-cols-[440px_1fr] lg:gap-6 lg:px-6 lg:py-6">
@@ -219,7 +278,7 @@ export default function BookingClient({
             </span>
           </div>
           <div className="space-y-2" role="radiogroup" aria-label="Loại xe">
-            {rates.map(rate => {
+            {vehicles.map(rate => {
               const option = estimate?.options?.find(o => o.vehicleType === rate.vehicleType);
               const nearby = drivers?.filter(d => d.vehicleType === rate.vehicleType) ?? null;
               const nearest = nearby?.[0];
@@ -261,6 +320,7 @@ export default function BookingClient({
                       <>
                         <span className="block text-base font-bold text-slate-900">{vnd(option.fareAmount)}</span>
                         {!!option.discountAmount && <span className="block text-xs text-slate-400 line-through">{vnd(option.originalFare)}</span>}
+                        <SurgeBadge snapshot={option} />
                       </>
                     ) : (
                       <span className="block text-xs text-slate-400">—</span>
@@ -269,9 +329,15 @@ export default function BookingClient({
                 </button>
               );
             })}
-            {rates.length === 0 && <p className="px-1 text-sm text-slate-500">Chưa tải được bảng giá.</p>}
+            {vehicles.length === 0 && <p className="px-1 text-sm text-slate-500">Chưa tải được bảng giá.</p>}
           </div>
-          {chosen && <div className="mt-3 px-1 text-xs text-slate-500">Giá tính theo khoảng cách {chosen.estimatedDistance} km giữa điểm đón và điểm đến.</div>}
+          {chosen && (
+            <div className="mt-3 space-y-2">
+              <PriceReasons snapshot={chosen} />
+              <PriceBreakdown snapshot={{ ...chosen, fareAmount: chosen.originalFare ?? chosen.fareAmount }} title={`Vì sao giá ${vnd(chosen.originalFare ?? chosen.fareAmount)}?`} />
+              <div className="px-1 text-xs text-slate-500">Giá được giữ nguyên khi bạn bấm đặt, kể cả nếu hệ số thay đổi sau đó.</div>
+            </div>
+          )}
 
           <div className="mt-5 border-t border-slate-100 pt-4">
             <div className="mb-2 px-1 text-sm font-semibold text-slate-900">Thanh toán</div>
@@ -286,13 +352,37 @@ export default function BookingClient({
               <MethodButton selected={paymentMethod === 'CASH'} onClick={() => setPaymentMethod('CASH')} icon={<Banknote className="h-4 w-4" />} title="Tiền mặt" detail="Trả tài xế khi đến nơi" />
             </div>
             {shortOfFunds && (
-              <p className="mt-2 px-1 text-xs text-amber-700">
-                Số dư khả dụng không đủ cho chuyến này, yêu cầu sẽ bị từ chối.{' '}
-                <Link href="/khach-hang/ngan-hang" className="font-semibold underline">
-                  Nạp thêm tiền
-                </Link>{' '}
-                hoặc chọn tiền mặt.
-              </p>
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="font-semibold">Số dư ngân hàng không đủ</div>
+                <div className="mt-0.5">
+                  Khả dụng {vnd(bank?.available)}, chuyến này cần {vnd(chosen?.fareAmount)} (thiếu {vnd(shortfall)}). Nạp thêm tiền hoặc chọn thanh toán tiền mặt.
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[Math.ceil(shortfall / 10000) * 10000, 200000, 500000]
+                    .filter((v, i, all) => all.indexOf(v) === i && v >= 1000 && v <= 5000000)
+                    .map(amount => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => void topUp(amount)}
+                        disabled={toppingUp !== null}
+                        className="flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                      >
+                        {toppingUp === amount && <Loader2 className="h-3 w-3 animate-spin" />}
+                        Nạp {vnd(amount)}
+                      </button>
+                    ))}
+                  <button type="button" onClick={() => setPaymentMethod('CASH')} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700 underline">
+                    Dùng tiền mặt
+                  </button>
+                  <Link href="/khach-hang/ngan-hang" className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700 underline">
+                    Mở ngân hàng
+                  </Link>
+                </div>
+              </div>
+            )}
+            {paymentMethod === 'BANK' && bank && !shortOfFunds && chosen && (
+              <p className="mt-2 px-1 text-xs text-slate-500">Khi đặt, {vnd(chosen.fareAmount)} được khóa trong tài khoản và chỉ trừ khi chuyến hoàn thành; hủy chuyến sẽ mở khóa lại.</p>
             )}
           </div>
 
@@ -343,11 +433,28 @@ export default function BookingClient({
               </p>
             )}
           </div>
+
+          <div className="mt-4">
+            <label htmlFor="note-for-driver" className="mb-2 flex items-center justify-between px-1 text-sm">
+              <span className="flex items-center gap-1.5 font-semibold text-slate-900">
+                <MessageSquareText className="h-4 w-4 text-slate-400" /> Ghi chú cho tài xế
+              </span>
+              <span className="text-xs text-slate-400">{note.length}/200</span>
+            </label>
+            <textarea
+              id="note-for-driver"
+              value={note}
+              onChange={e => setNote(e.target.value.slice(0, 200))}
+              rows={2}
+              placeholder="Ví dụ: đứng ở cổng số 2, mặc áo xanh"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            />
+          </div>
           {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
           <button
             type="button"
             onClick={() => void book()}
-            disabled={!chosen || booking || !!activeTrip || voucherBlocked}
+            disabled={!chosen || booking || !!activeTrip || voucherBlocked || shortOfFunds}
             className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {booking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}
@@ -357,8 +464,10 @@ export default function BookingClient({
                 ? 'Nhập đủ điểm đón và điểm đến'
                 : voucherBlocked
                   ? 'Mã giảm giá không dùng được'
-                  : chosen
-                    ? `Đặt ${rates.find(r => r.vehicleType === vehicleType)?.displayName.toLowerCase() ?? 'xe'} · ${vnd(chosen.fareAmount)} · ${paymentMethod === 'CASH' ? 'tiền mặt' : 'ngân hàng'}`
+                  : shortOfFunds
+                    ? 'Số dư không đủ để đặt'
+                    : chosen
+                    ? `Đặt ${vehicles.find(r => r.vehicleType === vehicleType)?.displayName.toLowerCase() ?? 'xe'} · ${vnd(chosen.fareAmount)} · ${paymentMethod === 'CASH' ? 'tiền mặt' : 'ngân hàng'}`
                     : 'Đặt xe'}
           </button>
           {pickup && selectedNearby !== null && selectedNearby.length === 0 && (
