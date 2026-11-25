@@ -38,10 +38,20 @@ class BankControllerTest {
     }
 
     @Test
-    void accountRequiresPassengerRole() throws Exception {
+    void accountRequiresPassengerOrDriverRole() throws Exception {
         this.mockMvc
             .perform(
-                    get("/payments/bank/me").header("X-User-Id", USER.toString()).header("X-User-Roles", "ROLE_DRIVER"))
+                    get("/payments/bank/me").header("X-User-Id", USER.toString()).header("X-User-Roles", "ROLE_ADMIN"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void withdrawRequiresDriverRole() throws Exception {
+        this.mockMvc
+            .perform(post("/payments/bank/me/withdraw").header("X-User-Id", USER.toString())
+                .header("X-User-Roles", "ROLE_PASSENGER")
+                .contentType("application/json")
+                .content("{\"amount\":100000}"))
             .andExpect(status().isForbidden());
     }
 

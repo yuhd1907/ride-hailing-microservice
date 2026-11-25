@@ -290,10 +290,18 @@ test('processed_events and business update share transaction; duplicate skips bu
 });
 // ---- Tài xế từ chối chuyến ----
 // Một dòng matching_requests trong bộ nhớ, hiểu đúng các câu UPDATE của matching.js.
-function matchingRow() {
-  const row = { status: 'PENDING', reservationId: id(), selectedDriverId: null, attemptedDriverIds: [] };
+// startedAgoMs: chuyến đã tìm tài xế được bao lâu. Mặc định 4 phút, tức đã quá thời hạn tìm 3 phút.
+function matchingRow(startedAgoMs = 4 * 60 * 1000) {
+  const row = { status: 'PENDING', reservationId: id(), selectedDriverId: null, attemptedDriverIds: [], searchStartedAt: new Date(Date.now() - startedAgoMs).toISOString(), nextAttemptAt: null, context: null };
   const client = { query: async (sql, args) => {
+    if (sql.startsWith('SELECT "tripId", context')) return { rows: row.status === 'PENDING' && !row.selectedDriverId && row.context && row.nextAttemptAt ? [{ tripId: row.context.payload.tripId, context: row.context }] : [] };
     if (sql.startsWith('SELECT')) return { rows: [row] };
+    if (sql.startsWith('INSERT INTO matching_requests')) { row.context ??= args[3]; return { rows: [], rowCount: 1 }; }
+    if (sql.includes('SET "nextAttemptAt"')) { row.nextAttemptAt = new Date().toISOString(); return { rows: [], rowCount: 1 }; }
+    if (sql.includes('SET "selectedDriverId"=NULL, "reservationId"=$4')) {
+      if (row.status === args[1] && row.selectedDriverId === args[2]) Object.assign(row, { selectedDriverId: null, reservationId: args[3] });
+      return { rows: [], rowCount: 1 };
+    }
     if (sql.includes('SET status=$3')) {
       if (row.status !== args[4] || row.selectedDriverId !== args[1]) return { rows: [], rowCount: 0 };
       Object.assign(row, { status: args[2], selectedDriverId: null, reservationId: args[3] });
@@ -313,14 +321,15 @@ function fakeEvents(client, outbox) {
     enqueue: async (client, eventType, payload, correlationId) => outbox.push({ eventId: id(), eventType, correlationId, occurredAt: new Date().toISOString(), payload }),
   };
 }
-function matchingHarness(available) {
-  const { row, client } = matchingRow();
+function matchingHarness(available, { startedAgoMs, reserve } = {}) {
+  const { row, client } = matchingRow(startedAgoMs);
   const reserves = [], outbox = [];
   const matching = load('matching-service', 'matching.js', {
     './events': fakeEvents(client, outbox),
     './service-client': { request: async (app, url, correlationId, body) => {
       if (url.includes('/available')) return available();
       reserves.push({ url, body });
+      if (reserve) await reserve(url);
     } },
   });
   return { matching, row, reserves, outbox };
@@ -385,7 +394,7 @@ test('rejection re-matches with a different driver and ignores redelivery', asyn
   assert.equal(h.reserves.length, 2);
   assert.equal(h.outbox.length, 2);
 });
-test('rejection with no other driver fails once; redelivery cannot revive the trip', async () => {
+test('after the 3-minute search window, rejection with no other driver fails once; redelivery cannot revive the trip', async () => {
   const requested = requestedEvent(), driverA = id(), driverB = id();
   let nearby = [{ id: driverA }];
   const h = matchingHarness(() => nearby);
@@ -403,7 +412,7 @@ test('rejection with no other driver fails once; redelivery cannot revive the tr
   assert.equal(h.row.status, 'FAILED');
   assert.equal(h.outbox.length, 2);
 });
-test('no available driver on initial request produces one terminal failure', async () => {
+test('after the 3-minute search window, no available driver produces one terminal failure', async () => {
   const event = requestedEvent(), h = matchingHarness(() => []);
   await h.matching.handle(event);
   await h.matching.handle({ ...event, eventId: id() });
@@ -539,4 +548,67 @@ test('end to end: rejecting driver is freed at once and the trip goes to another
     assert.deepEqual([trip.status, trip.driverId], ['AWAITING_DRIVER', driverB]);
     assert.equal(matchingOutbox.length, 2);
   } finally { await http.close(); }
+});
+
+// ---- Tìm tài xế trong tối đa 3 phút ----
+test('within 3 minutes, no driver keeps the request waiting and the retry sweep assigns a driver that appears later', async () => {
+  const requested = requestedEvent(), driverA = id();
+  let nearby = [];
+  const h = matchingHarness(() => nearby, { startedAgoMs: 0 });
+  await h.matching.handle(requested);
+  assert.equal(h.row.status, 'PENDING');
+  assert.equal(h.outbox.length, 0, 'chưa hết 3 phút thì không báo matching.failed');
+  assert.ok(h.row.nextAttemptAt, 'đã hẹn lần tìm lại');
+  assert.equal(h.row.context.payload.tripId, requested.payload.tripId, 'lưu ngữ cảnh để tìm lại');
+  // Một tài xế bật app gần đó: lượt tìm lại định kỳ ghép được ngay.
+  nearby = [{ id: driverA }];
+  assert.equal(await h.matching.retryWaiting(), 1);
+  assert.equal(h.row.status, 'ASSIGNED');
+  assert.equal(h.row.selectedDriverId, driverA);
+  assert.deepEqual(h.outbox.map(e => e.eventType), ['matching.driver_assigned']);
+  assert.equal(h.outbox[0].correlationId, requested.correlationId, 'giữ correlationId của chuyến');
+  assert.equal(await h.matching.retryWaiting(), 0, 'đã ghép thì không còn trong hàng chờ');
+});
+
+test('within 3 minutes, a rejection with no other free driver waits instead of failing; the rejecting driver is never re-offered', async () => {
+  const requested = requestedEvent(), driverA = id(), driverB = id();
+  let nearby = [{ id: driverA }];
+  const h = matchingHarness(() => nearby, { startedAgoMs: 30 * 1000 });
+  await h.matching.handle(requested);
+  assert.equal(h.row.selectedDriverId, driverA);
+  await h.matching.rejected(rejection(requested, driverA));
+  assert.equal(h.row.status, 'PENDING');
+  assert.equal(h.outbox.filter(e => e.eventType === 'matching.failed').length, 0);
+  await h.matching.retryWaiting();
+  assert.equal(h.row.status, 'PENDING', 'A đã từ chối nên không được giữ lại cho chuyến này');
+  nearby = [{ id: driverA }, { id: driverB }];
+  await h.matching.retryWaiting();
+  assert.equal(h.row.status, 'ASSIGNED');
+  assert.equal(h.row.selectedDriverId, driverB);
+});
+
+test('a busy driver (409 while reserving) is skipped only for this round and offered again once free', async () => {
+  const requested = requestedEvent(), driverA = id();
+  let busy = true;
+  const h = matchingHarness(() => [{ id: driverA }], { startedAgoMs: 0, reserve: async () => { if (busy) throw Object.assign(new Error('conflict'), { status: 409 }); } });
+  await h.matching.handle(requested);
+  assert.equal(h.row.status, 'PENDING');
+  assert.equal(h.row.selectedDriverId, null);
+  assert.deepEqual(h.row.attemptedDriverIds, [], 'tài xế bận không bị loại vĩnh viễn');
+  busy = false;
+  await h.matching.retryWaiting();
+  assert.equal(h.row.status, 'ASSIGNED');
+  assert.equal(h.row.selectedDriverId, driverA);
+});
+
+test('after 3 minutes of searching, the retry sweep fails the request once', async () => {
+  const requested = requestedEvent();
+  const h = matchingHarness(() => [], { startedAgoMs: 0 });
+  await h.matching.handle(requested);
+  assert.equal(h.row.status, 'PENDING');
+  h.row.searchStartedAt = new Date(Date.now() - h.matching.SEARCH_TIMEOUT_MS - 1000).toISOString();
+  await h.matching.retryWaiting();
+  assert.equal(h.row.status, 'FAILED');
+  assert.deepEqual(h.outbox.map(e => [e.eventType, e.payload.reason]), [['matching.failed', 'NO_AVAILABLE_DRIVERS']]);
+  assert.equal(await h.matching.retryWaiting(), 0);
 });

@@ -5,13 +5,13 @@ import Pill from '@/components/site/Pill';
 import { time, vnd } from '@/lib/format';
 import { FAILURE_REASON, PAYMENT_METHOD, PAYMENT_STATUS } from '@/lib/labels';
 import { gateway, requireUser } from '@/lib/server/gateway';
-import type { Payment } from '@/lib/types';
+import type { BankAccount, Payment } from '@/lib/types';
 
 export const metadata: Metadata = { title: 'Thanh toán' };
 
 export default async function PassengerPayments() {
   requireUser('ROLE_PASSENGER');
-  const payments = await gateway<Payment[]>('/payments/me?limit=100');
+  const [payments, bank] = await Promise.all([gateway<Payment[]>('/payments/me?limit=100'), gateway<BankAccount>('/payments/bank/me')]);
   const list = [...(payments.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const paid = list.filter(p => p.status === 'SUCCESS');
   const total = paid.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -20,7 +20,8 @@ export default async function PassengerPayments() {
     <Container>
       <PageTitle title="Thanh toán" subtitle="Lịch sử giao dịch của các chuyến đi" />
       {payments.error && <ErrorState message={payments.error} />}
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className="mb-6 grid gap-4 sm:grid-cols-4">
+        <Stat label="Số dư khả dụng" value={bank.data ? vnd(bank.data.available) : '—'} hint={bank.data && Number(bank.data.held) > 0 ? `Đang tạm giữ ${vnd(bank.data.held)}` : 'Tài khoản RideFlow'} />
         <Stat label="Tổng đã chi" value={vnd(total)} />
         <Stat label="Giao dịch thành công" value={paid.length} />
         <Stat label="Giao dịch thất bại" value={list.filter(p => p.status === 'FAILED').length} />

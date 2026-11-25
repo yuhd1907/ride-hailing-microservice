@@ -34,6 +34,16 @@ public class DriverInternalController {
     }
 
     /**
+     * GET /internal/drivers/{id}/location - Vị trí GPS gần nhất của tài xế. Trip Service gọi
+     * sau khi đã kiểm tra người hỏi là khách của chuyến đang được tài xế này phục vụ.
+     */
+    @GetMapping("/{id}/location")
+    public ResponseEntity<com.ridehail.driverservice.dto.response.DriverLocationResponse> location(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(driverService.getLocation(id));
+    }
+
+    /**
      * GET /internal/drivers/available - Tìm tài xế khả dụng qua Redis GEO (cho TV2
      * Matching Service)
      */

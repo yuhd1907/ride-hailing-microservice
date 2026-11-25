@@ -7,8 +7,10 @@ import java.util.UUID;
 import com.ridehail.paymentservice.config.exception.ForbiddenException;
 import com.ridehail.paymentservice.config.exception.UnauthorizedException;
 import com.ridehail.paymentservice.dto.request.TopUpRequest;
+import com.ridehail.paymentservice.dto.request.WithdrawRequest;
 import com.ridehail.paymentservice.dto.response.BankAccountResponse;
 import com.ridehail.paymentservice.dto.response.BankTransactionResponse;
+import com.ridehail.paymentservice.dto.response.WalletPolicyResponse;
 import com.ridehail.paymentservice.service.BankService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Ngân hàng ảo của hành khách. Gọi qua Gateway: Gateway kiểm tra JWT và gắn X-User-Id,
+ * Ngân hàng ảo của hành khách và ví của tài xế. Gọi qua Gateway: Gateway kiểm tra JWT và gắn X-User-Id,
  * X-User-Roles; chỉ hành khách xem và nạp tiền vào tài khoản của chính mình.
  */
 @RestController
@@ -42,7 +44,7 @@ public class BankController {
     public ResponseEntity<BankAccountResponse> account(
             @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId,
             @RequestHeader(value = ROLES_HEADER, required = false) String roles) {
-        return ResponseEntity.ok(this.bankService.account(requirePassenger(userId, roles)));
+        return ResponseEntity.ok(this.bankService.account(requireAccountHolder(userId, roles)));
     }
 
     @GetMapping("/me/transactions")
@@ -50,7 +52,7 @@ public class BankController {
             @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId,
             @RequestHeader(value = ROLES_HEADER, required = false) String roles,
             @RequestParam(defaultValue = "20") int limit) {
-        return ResponseEntity.ok(this.bankService.transactions(requirePassenger(userId, roles), limit));
+        return ResponseEntity.ok(this.bankService.transactions(requireAccountHolder(userId, roles), limit));
     }
 
     @PostMapping("/me/topup")
@@ -58,7 +60,25 @@ public class BankController {
             @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId,
             @RequestHeader(value = ROLES_HEADER, required = false) String roles,
             @Valid @RequestBody TopUpRequest request) {
-        return ResponseEntity.ok(this.bankService.topUp(requirePassenger(userId, roles), request.amount()));
+        return ResponseEntity.ok(this.bankService.topUp(requireAccountHolder(userId, roles), request.amount()));
+    }
+
+    /** Tài xế rút tiền từ ví về ngân hàng liên kết. */
+    @PostMapping("/me/withdraw")
+    public ResponseEntity<BankAccountResponse> withdraw(
+            @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId,
+            @RequestHeader(value = ROLES_HEADER, required = false) String roles,
+            @Valid @RequestBody WithdrawRequest request) {
+        return ResponseEntity.ok(this.bankService.withdraw(requireRole(userId, roles, "ROLE_DRIVER"), request.amount()));
+    }
+
+    /** Tỷ lệ chiết khấu nền tảng và giới hạn rút tiền (hiển thị trên ví / thu nhập tài xế). */
+    @GetMapping("/policy")
+    public ResponseEntity<WalletPolicyResponse> policy(
+            @RequestHeader(value = USER_ID_HEADER, required = false) UUID userId,
+            @RequestHeader(value = ROLES_HEADER, required = false) String roles) {
+        requireAccountHolder(userId, roles);
+        return ResponseEntity.ok(this.bankService.walletPolicy());
     }
 
     static UUID requireRole(UUID userId, String roles, String role) {
@@ -72,8 +92,21 @@ public class BankController {
         return userId;
     }
 
-    private static UUID requirePassenger(UUID userId, String roles) {
-        return requireRole(userId, roles, "ROLE_PASSENGER");
+    /**
+     * Tài khoản ngân hàng ảo dùng cho cả hành khách (trả tiền chuyến) và tài xế (ví nhận tiền
+     * chuyến, trừ chiết khấu). Người dùng chỉ thao tác trên tài khoản của chính mình.
+     */
+    private static UUID requireAccountHolder(UUID userId, String roles) {
+        if (userId == null) {
+            throw new UnauthorizedException("Thiếu danh tính người dùng, hãy gọi qua Gateway kèm Bearer token");
+        }
+        boolean allowed = roles != null && Arrays.stream(roles.split(","))
+            .map(String::trim)
+            .anyMatch((role) -> "ROLE_PASSENGER".equals(role) || "ROLE_DRIVER".equals(role));
+        if (!allowed) {
+            throw new ForbiddenException("Cần vai trò ROLE_PASSENGER hoặc ROLE_DRIVER");
+        }
+        return userId;
     }
 
 }

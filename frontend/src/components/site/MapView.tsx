@@ -1,12 +1,12 @@
 'use client';
 
-import { AdvancedMarker, Map as GoogleMap, Pin, Polyline, useMap } from '@vis.gl/react-google-maps';
+import { AdvancedMarker, Map as GoogleMap, Pin, Polyline, Rectangle, useMap } from '@vis.gl/react-google-maps';
 import { MapPinOff } from 'lucide-react';
 import { useEffect } from 'react';
 import { GOOGLE_MAP_ID, MAPS_ENABLED } from '@/lib/maps';
 import type { Point } from '@/lib/types';
 
-export type MarkerKind = 'pickup' | 'destination' | 'me';
+export type MarkerKind = 'pickup' | 'destination' | 'me' | 'bike' | 'car';
 
 export interface MapMarker {
   id: string;
@@ -17,10 +17,21 @@ export interface MapMarker {
   draggable?: boolean;
 }
 
+/** Ô tô màu trên bản đồ (bản đồ nhu cầu): tự vẽ bằng Rectangle. */
+export interface MapCell {
+  id: string;
+  bounds: { north: number; south: number; east: number; west: number };
+  color: string;
+  opacity: number;
+}
+
 const STYLE: Record<MarkerKind, { background: string; glyph: string }> = {
   pickup: { background: '#2557e0', glyph: 'A' },
   destination: { background: '#e11d48', glyph: 'B' },
   me: { background: '#7c3aed', glyph: '●' },
+  // Tài xế: xe máy / ô tô (tài xế rảnh quanh điểm đón, hoặc tài xế của chuyến đang tới).
+  bike: { background: '#059669', glyph: '🛵' },
+  car: { background: '#0f766e', glyph: '🚗' },
 };
 
 function FitTo({ points }: { points: Point[] }) {
@@ -59,10 +70,14 @@ export default function MapView({
   route,
   routePath,
   fit = [],
+  cells = [],
+  onCellClick,
   onClick,
   onMarkerDragEnd,
   className = 'h-full w-full',
 }: {
+  cells?: MapCell[];
+  onCellClick?: (id: string) => void;
   center: Point;
   markers: MapMarker[];
   route?: [Point, Point] | null;
@@ -90,6 +105,19 @@ export default function MapView({
       }}
     >
       <FitTo points={fit} />
+      {cells.map(c => (
+        <Rectangle
+          key={c.id}
+          bounds={c.bounds}
+          fillColor={c.color}
+          fillOpacity={c.opacity}
+          strokeColor={c.color}
+          strokeOpacity={Math.min(0.9, c.opacity + 0.25)}
+          strokeWeight={1}
+          clickable={!!onCellClick}
+          onClick={() => onCellClick?.(c.id)}
+        />
+      ))}
       {routePath ? (
         <>
           {/* Viền trắng bên dưới giúp lộ trình nổi trên nền bản đồ. */}
@@ -117,7 +145,7 @@ export default function MapView({
             if (latLng) onMarkerDragEnd?.(m.id, { lat: Number(latLng.lat().toFixed(6)), lng: Number(latLng.lng().toFixed(6)) });
           }}
         >
-          <Pin background={STYLE[m.kind].background} borderColor="#ffffff" glyphColor="#ffffff" glyph={STYLE[m.kind].glyph} scale={1.15} />
+          <Pin background={STYLE[m.kind].background} borderColor="#ffffff" glyphColor="#ffffff" glyph={STYLE[m.kind].glyph} scale={m.kind === 'bike' || m.kind === 'car' ? 1 : 1.15} />
         </AdvancedMarker>
       ))}
     </GoogleMap>

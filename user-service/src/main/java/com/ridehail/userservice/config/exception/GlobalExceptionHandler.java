@@ -54,6 +54,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return response(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<Map<String, Object>> badRequest(BadRequestException ex) {
+        return response(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<Map<String, Object>> accountConflict(ConflictException ex) {
         return response(HttpStatus.CONFLICT, ex.getMessage());

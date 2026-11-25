@@ -23,6 +23,8 @@ function messageOf(data: unknown, status: number): string {
 // Một số thông báo lỗi tiếng Anh từ Trip Service, đổi sang câu dễ hiểu cho người dùng.
 const MESSAGES: Record<string, string> = {
   'Trip is not awaiting driver': 'Chuyến không còn chờ tài xế xác nhận.',
+  'Invalid paymentMethod': 'Phương thức thanh toán không hợp lệ.',
+  'Quote expired; request a new quote': 'Báo giá đã hết hạn, vui lòng xem lại giá.',
   'Driver offer expired': 'Cuốc đã hết thời gian xác nhận (60 giây) và sẽ được chuyển cho tài xế khác.',
   'Trip can no longer be cancelled': 'Chuyến đã bắt đầu, không thể hủy.',
   'Trip is not in progress': 'Chuyến chưa bắt đầu.',
@@ -31,8 +33,22 @@ const MESSAGES: Record<string, string> = {
   'Trip not found': 'Không tìm thấy chuyến đi.',
   'Invalid pickup or destination': 'Điểm đón hoặc điểm đến không hợp lệ.',
   'Service temporarily unavailable': 'Dịch vụ tạm thời gián đoạn, vui lòng thử lại.',
-  'Invalid paymentMethod': 'Phương thức thanh toán không hợp lệ.',
+  'Passenger is already on board': 'Khách đã lên xe, không thể hủy chuyến.',
+  'Mark arrival at pickup first': 'Bấm "Đã đến điểm đón" trước khi báo khách không xuất hiện.',
+  'Wait at pickup before reporting no-show': 'Cần chờ khách ít nhất 2 phút tại điểm đón trước khi báo khách không xuất hiện.',
+  'Invalid cancel reason': 'Lý do hủy không hợp lệ.',
+  'Trip cannot be rated yet': 'Chỉ đánh giá được sau khi chuyến kết thúc.',
+  'Trip already rated': 'Bạn đã đánh giá chuyến này rồi.',
+  'Stars must be an integer from 1 to 5': 'Hãy chọn từ 1 đến 5 sao.',
+  'Subject is too short': 'Tiêu đề quá ngắn (tối thiểu 3 ký tự).',
+  'Description is too short': 'Mô tả quá ngắn (tối thiểu 10 ký tự).',
+  'Too many tickets today': 'Bạn đã gửi quá nhiều yêu cầu hôm nay, vui lòng thử lại ngày mai.',
+  'Trip is not accessible to this user': 'Bạn không tham gia chuyến này.',
   'Voucher đã được dùng': 'Bạn đã dùng mã giảm giá này rồi.',
+  'Note is too long': 'Ghi chú cho tài xế tối đa 200 ký tự.',
+  'Invalid note': 'Ghi chú không hợp lệ.',
+  'Driver location is not available for this trip': 'Chuyến này không còn theo dõi vị trí tài xế.',
+  'Driver has not shared a location yet': 'Tài xế chưa gửi vị trí.',
 };
 
 const VOUCHER_REASON: Record<string, string> = {
@@ -49,7 +65,7 @@ function translate(message: string) {
 }
 
 /** Gọi API qua proxy BFF /api/gw; cookie phiên được trình duyệt gửi kèm tự động. */
-export async function call<T>(path: string, init: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown } = {}): Promise<CallResult<T>> {
+export async function call<T>(path: string, init: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown } = {}): Promise<CallResult<T>> {
   try {
     const response = await fetch(`/api/gw${path}`, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),

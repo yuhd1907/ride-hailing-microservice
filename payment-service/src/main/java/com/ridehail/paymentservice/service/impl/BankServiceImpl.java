@@ -1,6 +1,7 @@
 package com.ridehail.paymentservice.service.impl;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -8,7 +9,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.ridehail.paymentservice.dto.response.BankAccountResponse;
+import com.ridehail.paymentservice.config.exception.ConflictException;
 import com.ridehail.paymentservice.dto.response.BankTransactionResponse;
+import com.ridehail.paymentservice.dto.response.WalletPolicyResponse;
 import com.ridehail.paymentservice.entity.BankAccount;
 import com.ridehail.paymentservice.entity.BankTransaction;
 import com.ridehail.paymentservice.entity.BankTransactionType;
@@ -63,6 +66,19 @@ public class BankServiceImpl implements BankService {
 
     private final Duration holdTtl;
 
+    static final BigDecimal DEFAULT_COMMISSION_RATE = new BigDecimal("0.20");
+
+    static final BigDecimal MIN_WITHDRAW = new BigDecimal("50000");
+
+    static final BigDecimal MAX_WITHDRAW = new BigDecimal("20000000");
+
+    static final BigDecimal MIN_TIP = new BigDecimal("5000");
+
+    static final BigDecimal MAX_TIP = new BigDecimal("500000");
+
+    /** Tỷ lệ chiết khấu nền tảng trên mỗi chuyến của tài xế (0.20 = 20%). */
+    private BigDecimal commissionRate = DEFAULT_COMMISSION_RATE;
+
     public BankServiceImpl(BankAccountRepository accountRepository, FundHoldRepository holdRepository,
             BankTransactionRepository transactionRepository, ClosedTripRepository closedTripRepository,
             @Value("${payment.bank.initial-balance:500000}") BigDecimal initialBalance,
@@ -73,6 +89,101 @@ public class BankServiceImpl implements BankService {
         this.closedTripRepository = closedTripRepository;
         this.initialBalance = initialBalance;
         this.holdTtl = holdTtl;
+    }
+
+    @Value("${payment.driver.commission-rate:0.20}")
+    void setCommissionRate(BigDecimal rate) {
+        if (rate == null || rate.signum() < 0 || rate.compareTo(BigDecimal.ONE) >= 0) {
+            throw new IllegalArgumentException("payment.driver.commission-rate phải trong [0, 1)");
+        }
+        this.commissionRate = rate;
+    }
+
+    @Override
+    @Transactional
+    public void settleDriver(UUID tripId, UUID driverId, BigDecimal fare, boolean paidByCash) {
+        if (driverId == null || fare == null || fare.signum() <= 0) {
+            return;
+        }
+        BankTransactionType type = paidByCash ? BankTransactionType.COMMISSION : BankTransactionType.EARNING;
+        BankAccount account = lockAccount(driverId);
+        if (this.transactionRepository.existsByTripIdAndUserIdAndType(tripId, driverId, type)) {
+            log.info("Chuyến đã được quyết toán cho tài xế ({}), bỏ qua", type);
+            return;
+        }
+        // Chiết khấu làm tròn tới đồng; tiền tài xế nhận = cước - chiết khấu
+        BigDecimal commission = fare.multiply(this.commissionRate).setScale(0, RoundingMode.HALF_UP);
+        if (paidByCash) {
+            if (commission.signum() == 0) {
+                return;
+            }
+            account.debit(commission);
+            record(account, BankTransactionType.COMMISSION, commission, tripId, available(account));
+            log.info("Trừ chiết khấu {} của chuyến tiền mặt khỏi ví tài xế, số dư còn {}", commission,
+                    account.getBalance());
+        }
+        else {
+            BigDecimal net = fare.subtract(commission);
+            account.credit(net);
+            record(account, BankTransactionType.EARNING, net, tripId, available(account));
+            log.info("Cộng {} (cước {} - chiết khấu {}) vào ví tài xế", net, fare, commission);
+        }
+    }
+
+    @Override
+    @Transactional
+    public BankAccountResponse withdraw(UUID userId, BigDecimal amount) {
+        if (amount == null || amount.compareTo(MIN_WITHDRAW) < 0 || amount.compareTo(MAX_WITHDRAW) > 0) {
+            throw new IllegalArgumentException("Số tiền rút phải từ 50.000 đến 20.000.000 VND");
+        }
+        BankAccount account = lockAccount(userId);
+        BigDecimal available = available(account);
+        if (available.compareTo(amount) < 0) {
+            throw new ConflictException("Số dư khả dụng " + available.toPlainString() + " VND không đủ để rút");
+        }
+        account.debit(amount);
+        record(account, BankTransactionType.WITHDRAW, amount, null, available.subtract(amount));
+        log.info("Tài xế rút {} về ngân hàng liên kết", amount);
+        return toResponse(account);
+    }
+
+    @Override
+    public WalletPolicyResponse walletPolicy() {
+        return new WalletPolicyResponse(this.commissionRate, MIN_WITHDRAW, MAX_WITHDRAW);
+    }
+
+    @Override
+    @Transactional
+    public com.ridehail.paymentservice.dto.response.TipResponse tip(UUID tripId, UUID riderId, UUID driverId,
+            BigDecimal amount) {
+        if (amount == null || amount.compareTo(MIN_TIP) < 0 || amount.compareTo(MAX_TIP) > 0) {
+            throw new IllegalArgumentException("Tip phải từ 5.000 đến 500.000 VND");
+        }
+        // Khoá tài khoản khách trước rồi tới ví tài xế, cùng thứ tự với lúc trừ cước + cộng ví,
+        // nên hai transaction không khoá chéo nhau.
+        BankAccount rider = lockAccount(riderId);
+        if (this.transactionRepository.existsByTripIdAndUserIdAndType(tripId, riderId, BankTransactionType.TIP_SENT)) {
+            throw new ConflictException("Bạn đã tip cho chuyến này rồi");
+        }
+        BigDecimal available = available(rider);
+        if (available.compareTo(amount) < 0) {
+            throw new ConflictException("Số dư khả dụng " + available.toPlainString() + " VND không đủ để tip");
+        }
+        BankAccount driver = lockAccount(driverId);
+        rider.debit(amount);
+        record(rider, BankTransactionType.TIP_SENT, amount, tripId, available.subtract(amount));
+        driver.credit(amount);
+        record(driver, BankTransactionType.TIP_RECEIVED, amount, tripId, available(driver));
+        log.info("Khách tip {} cho tài xế", amount);
+        return tipOf(tripId, riderId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.ridehail.paymentservice.dto.response.TipResponse tipOf(UUID tripId, UUID riderId) {
+        return this.transactionRepository.findFirstByTripIdAndUserIdAndType(tripId, riderId, BankTransactionType.TIP_SENT)
+            .map((tx) -> new com.ridehail.paymentservice.dto.response.TipResponse(tripId, tx.getAmount(), tx.getCreatedAt()))
+            .orElseGet(() -> new com.ridehail.paymentservice.dto.response.TipResponse(tripId, null, null));
     }
 
     @Override

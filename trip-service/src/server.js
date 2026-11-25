@@ -23,6 +23,7 @@ app.use((req, res, next) => { req.correlationId = req.get('x-correlation-id') ||
 app.get('/ping', async (req, res) => { try { await db.query('SELECT 1'); if (!rabbitmq.channel) throw new Error('RabbitMQ is disconnected'); await rabbitmq.channel.checkExchange(rabbitmq.EXCHANGE); res.status(200).json({ status: 'UP', service: 'trip-service' }); } catch (e) { log('error', req.correlationId, req.method, req.originalUrl, `health check failed: ${e.message}`); res.status(503).json({ status: 'DOWN', service: 'trip-service' }); } });
 app.use(express.json({ limit: '32kb' }));
 app.use((req, res, next) => { if (!uuid(req.correlationId)) return res.status(400).json({ error: 'X-Correlation-ID must be a UUID' }); next(); });
+require('./features')(app); // đường dẫn cố định (demand-map, drivers/me/stats, support/tickets) phải đứng trước /trips/:id
 require('./routes')(app);
 app.use((error, req, res, next) => { log('error', req.correlationId, req.method, req.originalUrl, errorDetails(error)); res.status(error.status || 503).json({ error: error.status && error.status < 500 ? error.message : 'Service temporarily unavailable' }); });
 rabbitmq.consume('payment.succeeded', saga.payment);
@@ -31,14 +32,15 @@ rabbitmq.consume('matching.driver_assigned', saga.assigned);
 rabbitmq.consume('matching.failed', saga.failed);
 rabbitmq.consume('payment.authorized', saga.authorized);
 rabbitmq.consume('payment.authorization_failed', saga.authorizationFailed);
-let outboxTimer;
+let outboxTimer, offerTimer;
 let server;
-(async () => { for (; ;) { try { await events.initialize(); await pricing.initialize(); await vouchers.initialize(db); await rabbitmq.connect(); pricing.start(); outboxTimer = setInterval(events.flush, 1000); server = app.listen(port, () => log('info', null, null, null, `trip-service listening on ${port}`)); log('info', null, null, null, 'RabbitMQ connected'); break; } catch (e) { log('error', null, null, null, `Startup failed: ${errorDetails(e)}`); await new Promise(r => setTimeout(r, 3000)); } } try { eureka.start(); } catch (e) { log('error', null, null, null, `Eureka startup failed: ${errorDetails(e)}`); } })();
+(async () => { for (; ;) { try { await events.initialize(); await pricing.initialize(); await vouchers.initialize(db); await rabbitmq.connect(); pricing.start(); outboxTimer = setInterval(events.flush, 1000); offerTimer = setInterval(() => saga.expireOffers().catch(e => log('error', null, null, null, `Offer sweep failed: ${errorDetails(e)}`)), 5000); server = app.listen(port, () => log('info', null, null, null, `trip-service listening on ${port}`)); log('info', null, null, null, 'RabbitMQ connected'); break; } catch (e) { log('error', null, null, null, `Startup failed: ${errorDetails(e)}`); await new Promise(r => setTimeout(r, 3000)); } } try { eureka.start(); } catch (e) { log('error', null, null, null, `Eureka startup failed: ${errorDetails(e)}`); } })();
 let shuttingDown = false;
 async function shutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
     clearInterval(outboxTimer);
+    clearInterval(offerTimer);
     log('info', null, null, null, 'shutting down, deregistering from Eureka');
     await new Promise((resolve) => {
         const timer = setTimeout(resolve, 3000);

@@ -15,6 +15,9 @@ public interface DriverService {
 
     DriverResponse getDriverById(UUID driverId);
 
+    /** Vị trí gần nhất của tài xế (cho Trip Service hiển thị cho khách của chuyến). */
+    com.ridehail.driverservice.dto.response.DriverLocationResponse getLocation(UUID driverId);
+
     void updateLocation(UUID driverId, LocationUpdateRequest request);
 
     List<DriverResponse> findAvailableNearby(double latitude, double longitude, double radiusKm);

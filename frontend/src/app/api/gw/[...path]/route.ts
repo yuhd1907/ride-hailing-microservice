@@ -33,9 +33,11 @@ async function forward(request: NextRequest, { params }: { params: { path: strin
     return NextResponse.json({ error: 'Không kết nối được máy chủ, vui lòng thử lại.' }, { status: 503 });
   }
 
-  const response = new NextResponse(await upstream.text(), {
+  // 204/205/304 không được có body (kể cả chuỗi rỗng), nếu không Next.js ném lỗi và trả 500.
+  const empty = [204, 205, 304].includes(upstream.status);
+  const response = new NextResponse(empty ? null : await upstream.text(), {
     status: upstream.status,
-    headers: { 'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json' },
+    headers: empty ? {} : { 'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json' },
   });
   const correlationId = upstream.headers.get('X-Correlation-ID');
   if (correlationId) response.headers.set('X-Correlation-ID', correlationId);

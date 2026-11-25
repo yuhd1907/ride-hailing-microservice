@@ -94,6 +94,8 @@ public class PaymentServiceImpl implements PaymentService {
         CaptureOutcome outcome = this.bankService.capture(payload.tripId(), riderId, payload.fareAmount());
         if (outcome == CaptureOutcome.CAPTURED) {
             payment.markSucceeded();
+            // Cùng transaction: tiền khách bị trừ thì ví tài xế được cộng phần sau chiết khấu
+            this.bankService.settleDriver(payload.tripId(), payload.driverId(), payload.fareAmount(), false);
         }
         else {
             payment.markFailed(PaymentFailureReason.INSUFFICIENT_FUNDS);
@@ -129,6 +131,8 @@ public class PaymentServiceImpl implements PaymentService {
         if (payment.getStatus() == PaymentStatus.PENDING) {
             payment.markSucceeded();
             this.paymentRepository.save(payment);
+            // Tài xế đã cầm tiền mặt: trừ chiết khấu nền tảng khỏi ví tài xế
+            this.bankService.settleDriver(tripId, driverId, payment.getAmount(), true);
             queueSucceeded(payment, payment.getCorrelationId());
         }
         return PaymentMapper.toResponse(payment);
@@ -166,6 +170,29 @@ public class PaymentServiceImpl implements PaymentService {
             .stream()
             .map(PaymentMapper::toResponse)
             .toList();
+    }
+
+    @Override
+    @Transactional
+    public com.ridehail.paymentservice.dto.response.TipResponse tip(UUID tripId, UUID riderId,
+            java.math.BigDecimal amount) {
+        Payment payment = checkOwner(this.paymentRepository.findByIdempotencyKey(tripId)
+            .orElseThrow(() -> new ResourceNotFoundException("Chuyến " + tripId + " chưa có payment")), riderId);
+        if (payment.getStatus() != PaymentStatus.SUCCESS) {
+            throw new ConflictException("Chỉ tip được sau khi chuyến đã thanh toán xong");
+        }
+        if (payment.getDriverId() == null) {
+            throw new ConflictException("Chuyến không có tài xế để tip");
+        }
+        return this.bankService.tip(tripId, riderId, payment.getDriverId(), amount);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.ridehail.paymentservice.dto.response.TipResponse tipOf(UUID tripId, UUID riderId) {
+        checkOwner(this.paymentRepository.findByIdempotencyKey(tripId)
+            .orElseThrow(() -> new ResourceNotFoundException("Chuyến " + tripId + " chưa có payment")), riderId);
+        return this.bankService.tipOf(tripId, riderId);
     }
 
     private void queueSucceeded(Payment payment, String correlationId) {
