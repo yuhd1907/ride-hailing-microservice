@@ -92,7 +92,7 @@ async function tripHarness() {
     const placeholders = Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])));
     assert.equal(placeholders, args.length, `Câu SQL có ${placeholders} placeholder nhưng truyền ${args.length} tham số: ${sql}`);
     if (sql.startsWith('INSERT INTO trips')) {
-      const trip = { tripId: args[0], passengerId: args[1], pickup: args[2], destination: args[3], estimatedDistance: args[4], fare: args[5], sagaId: args[6], vehicleType: args[7], status: 'REQUESTED', driverId: null, paymentId: null, version: 0, rejectedDriverIds: [], createdAt: stamp() };
+      const trip = { tripId: args[0], passengerId: args[1], pickup: args[2], destination: args[3], estimatedDistance: args[4], fare: args[5], sagaId: args[6], vehicleType: args[7], paymentMethod: args[11], noteForDriver: args[15], status: 'REQUESTED', driverId: null, paymentId: null, version: 0, rejectedDriverIds: [], createdAt: stamp() };
       trips.set(trip.tripId, trip);
       return { rows: [{ ...trip }], rowCount: 1 };
     }
@@ -257,7 +257,8 @@ test('HTTP: tài xế từ chối thì trip.driver_rejected mang vehicleType đ�
 
 function matchingHarness(candidates) {
   const updates = [], outbox = [];
-  const row = { status: 'PENDING', selectedDriverId: null, attemptedDriverIds: [], reservationId: uuid() };
+  // Đã tìm 4 phút (quá hạn 3 phút): không có xe đúng loại thì báo matching.failed ngay.
+  const row = { status: 'PENDING', selectedDriverId: null, attemptedDriverIds: [], reservationId: uuid(), searchStartedAt: new Date(Date.now() - 4 * 60 * 1000).toISOString() };
   const client = { query: async (sql, args) => {
     if (sql.startsWith('SELECT')) return { rows: [{ ...row }] };
     if (sql.startsWith('UPDATE')) updates.push(args);
@@ -290,4 +291,81 @@ test('validation: vehicleType trong trip.requested và trip.driver_rejected là 
     assert.ok(validate({ ...base, payload: { ...base.payload, vehicleType: 'CAR_7_SEAT' } }, 'trip.requested'));
     assert.throws(() => validate({ ...base, payload: { ...base.payload, vehicleType: 'BUS' } }, 'trip.requested'), InvalidEvent);
   }
+});
+
+test('HTTP: đặt chuyến lưu phương thức thanh toán (mặc định BANK) và phát trong trip.requested, trip.completed', async () => {
+  const h = await tripHarness();
+  const rider = passenger(), driver = driverActor();
+  try {
+    assert.equal((await h.call('/trips', rider, { pickup, destination, paymentMethod: 'CARD' })).status, 400);
+    const bank = await h.call('/trips', rider, { pickup, destination });
+    assert.equal(bank.data.paymentMethod, 'BANK');
+    const cash = await h.call('/trips', rider, { pickup, destination, paymentMethod: 'CASH' });
+    assert.equal(cash.status, 201);
+    assert.equal(cash.data.paymentMethod, 'CASH');
+    const requested = h.outbox.filter(e => e.eventType === 'trip.requested');
+    assert.deepEqual(requested.map(e => e.payload.paymentMethod), ['BANK', 'CASH']);
+    // Hoàn thành chuyến tiền mặt: trip.completed mang CASH để Payment chờ tài xế xác nhận.
+    Object.assign(h.trips.get(cash.data.tripId), { driverId: driver.id, status: 'AWAITING_DRIVER' });
+    assert.equal((await h.call(`/trips/${cash.data.tripId}/accept`, driver, {})).status, 200);
+    assert.equal((await h.call(`/trips/${cash.data.tripId}/complete`, driver, {})).status, 200);
+    const completed = h.outbox.find(e => e.eventType === 'trip.completed');
+    assert.equal(completed.payload.paymentMethod, 'CASH');
+  } finally { await h.close(); }
+});
+
+test('HTTP: ghi chú cho tài xế được làm sạch, tối đa 200 ký tự', async () => {
+  const h = await tripHarness();
+  const rider = passenger();
+  try {
+    const noted = await h.call('/trips', rider, { pickup, destination, note: '  Đứng cổng số 2,\n áo xanh  ' });
+    assert.equal(noted.status, 201);
+    assert.equal(noted.data.noteForDriver, 'Đứng cổng số 2, áo xanh');
+    assert.equal((await h.call('/trips', rider, { pickup, destination })).data.noteForDriver, null);
+    assert.equal((await h.call('/trips', rider, { pickup, destination, note: 'x'.repeat(201) })).data.error, 'Note is too long');
+    assert.equal((await h.call('/trips', rider, { pickup, destination, note: 42 })).status, 400);
+  } finally { await h.close(); }
+});
+
+const authorizationFailed = trip => ({ eventId: uuid(), eventType: 'payment.authorization_failed', correlationId: uuid(), occurredAt: new Date().toISOString(),
+  payload: { tripId: trip.tripId, riderId: trip.passengerId, amount: 120000, reason: 'INSUFFICIENT_FUNDS', failedAt: new Date().toISOString() } });
+
+// saga.authorizationFailed (khóa tiền trước khi ghép tài xế) được kiểm thử ở trip-payment-voucher.test.js.
+
+test('validation: payment.authorization_failed và paymentMethod trong trip.requested', () => {
+  const { validate, InvalidEvent } = require('../trip-service/src/validation');
+  const trip = { tripId: uuid(), passengerId: uuid() };
+  const ok = authorizationFailed(trip);
+  assert.ok(validate(ok, 'payment.authorization_failed'));
+  assert.throws(() => validate({ ...ok, payload: { ...ok.payload, reason: 'NOPE' } }, 'payment.authorization_failed'), InvalidEvent);
+  const requested = { eventId: uuid(), eventType: 'trip.requested', correlationId: uuid(), occurredAt: new Date().toISOString(), payload: { tripId: uuid(), riderId: uuid(), pickup: { lat: 1, lng: 2 }, paymentMethod: 'CASH' } };
+  assert.ok(validate(requested, 'trip.requested'));
+  assert.throws(() => validate({ ...requested, payload: { ...requested.payload, paymentMethod: 'CARD' } }, 'trip.requested'), InvalidEvent);
+});
+
+test('saga: tài xế không xác nhận cuốc quá 60 giây thì chuyến về MATCHING, loại tài xế đó và phát trip.driver_rejected để ghép tiếp', async () => {
+  const trip = { tripId: uuid(), passengerId: uuid(), driverId: uuid(), status: 'AWAITING_DRIVER', version: 3, rejectedDriverIds: [], pickup: { lat: 21, lng: 105 }, sagaId: uuid(), vehicleType: 'MOTORCYCLE', paymentId: null };
+  const firstDriver = trip.driverId;
+  const client = { query: async (sql, args) => {
+    if (sql.startsWith('SELECT "tripId" FROM trips')) return { rows: trip.status === 'AWAITING_DRIVER' ? [{ tripId: trip.tripId }] : [] };
+    if (sql.startsWith('SELECT * FROM trips')) return { rows: trip.status === 'AWAITING_DRIVER' ? [{ ...trip }] : [] };
+    if (sql.startsWith('UPDATE trips')) {
+      if (args[4] !== trip.version) return { rows: [], rowCount: 0 };
+      Object.assign(trip, { status: args[1], driverId: args[3], rejectedDriverIds: args[5], version: trip.version + 1 });
+      return { rows: [{ ...trip }], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 1 };
+  } };
+  const outbox = [], calls = [];
+  const events = { transaction: work => work(client), enqueue: async (c, eventType, payload, correlationId) => outbox.push({ eventType, payload, correlationId }) };
+  const saga = load('trip-service', 'saga.js', { './events': events, './service-client': { request: async (...args) => calls.push(args), release: async () => {} }, './logger': () => {} });
+  await saga.expireOffers(60);
+  assert.equal(trip.status, 'MATCHING');
+  assert.equal(trip.driverId, null);
+  assert.equal(JSON.stringify(trip.rejectedDriverIds), JSON.stringify([firstDriver]));
+  assert.ok(calls[0][1].endsWith(`/internal/drivers/${firstDriver}/reject`));
+  assert.deepEqual(outbox.map(e => [e.eventType, e.payload.vehicleType]), [['trip.driver_rejected', 'MOTORCYCLE']]);
+  assert.equal(outbox[0].correlationId, trip.sagaId);
+  await saga.expireOffers(60);
+  assert.equal(outbox.length, 1, 'chạy lại không phát thêm');
 });

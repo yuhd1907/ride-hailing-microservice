@@ -1,4 +1,5 @@
 'use strict';
+const crypto = require('crypto');
 const events = require('./events');
 const driver = require('./service-client');
 const { InvalidEvent } = require('./validation');
@@ -87,4 +88,30 @@ async function authorizationFailed(event) {
     await events.enqueue(client, 'trip.failed', { tripId: trip.tripId, riderId: trip.passengerId, reason: p.reason, failedAt: new Date().toISOString() }, event.correlationId);
   });
 }
-module.exports = { payment, assigned, failed, authorized, authorizationFailed, history };
+// Tài xế không xác nhận cuốc trong thời hạn: Driver Service tự nhả giữ chỗ sau 60 giây nhưng không báo
+// cho Trip, nên chuyến sẽ kẹt ở AWAITING_DRIVER. Quét định kỳ và xử lý như tài xế từ chối: chuyến về
+// MATCHING, loại tài xế khỏi lượt ghép sau, phát trip.driver_rejected để Matching ghép tài xế khác.
+const OFFER_TIMEOUT_SECONDS = Number(process.env.DRIVER_OFFER_TIMEOUT_SECONDS || 60);
+const STALE_OFFER = `status='AWAITING_DRIVER' AND "updatedAt" < CURRENT_TIMESTAMP - make_interval(secs => $1)`;
+async function expireOffers(timeoutSeconds = OFFER_TIMEOUT_SECONDS) {
+  const ids = await events.transaction(async client => (await client.query(`SELECT "tripId" FROM trips WHERE ${STALE_OFFER} ORDER BY "updatedAt" LIMIT 20`, [timeoutSeconds])).rows.map(row => row.tripId));
+  for (const tripId of ids) {
+    try {
+      await events.transaction(async client => {
+        // SKIP LOCKED: chuyến đang được tài xế nhận (giữ khóa dòng) thì bỏ qua, không tranh chấp.
+        const { rows: [trip] } = await client.query(`SELECT * FROM trips WHERE ${STALE_OFFER} AND "tripId"=$2 FOR UPDATE SKIP LOCKED`, [timeoutSeconds, tripId]);
+        if (!trip) return;
+        const correlationId = trip.sagaId || crypto.randomUUID();
+        const rejected = [...new Set([...(trip.rejectedDriverIds || []), trip.driverId])];
+        await history(client, trip, 'MATCHING', 'driver response timeout', trip.paymentId, null, rejected);
+        try { await driver.request('DRIVER-SERVICE', `/internal/drivers/${trip.driverId}/reject`, correlationId, { tripId }); }
+        catch (error) { if (![404, 409].includes(error.status)) throw error; }
+        await events.enqueue(client, 'trip.driver_rejected', { tripId, riderId: trip.passengerId, driverId: trip.driverId, pickup: trip.pickup, vehicleType: trip.vehicleType || 'MOTORCYCLE', rejectedAt: new Date().toISOString() }, correlationId);
+        log('info', 'Driver did not respond in time; re-matching', { correlationId, tripId });
+      });
+    } catch (error) {
+      log('error', `Offer timeout handling failed: ${error.message}`, { tripId });
+    }
+  }
+}
+module.exports = { payment, assigned, failed, authorized, authorizationFailed, history, expireOffers };

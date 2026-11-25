@@ -159,6 +159,8 @@ function createPricing({ db, cache, driver, providers = createProviders(), now =
   }
   async function initialize() {
     await db.query(fs.readFileSync(path.join(__dirname, 'pricing-schema.sql'), 'utf8'));
+    // Bảng/cột cho tính năng tài xế, đánh giá và hỗ trợ (features.js).
+    await db.query(fs.readFileSync(path.join(__dirname, 'features-schema.sql'), 'utf8'));
     await getPolicy();
   }
   function start() {
@@ -188,4 +190,5 @@ function current() {
 module.exports = { createPricing, POLICY_SQL, DEMAND_SQL,
   quote: (...args) => current().quote(...args), rates: () => current().rates(), lockQuote: (...args) => current().lockQuote(...args),
   initialize: () => current().initialize(), start: () => current().start(), close: () => instance?.close(),
+  policy: () => current().getPolicy(),
 };
