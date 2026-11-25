@@ -28,15 +28,15 @@ export default function UserMenu({ name, email, roleLabel }: { name: string; ema
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 rounded-full border border-slate-200 py-1 pl-1 pr-3 hover:bg-slate-50"
+        className="flex items-center gap-2 rounded-full border border-white/20 py-1 pl-1 pr-3 hover:bg-white/10"
         aria-expanded={open}
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">{initials || 'U'}</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-xs font-bold text-black">{initials || 'U'}</span>
         <span className="hidden text-left leading-tight sm:block">
-          <span className="block text-sm font-medium text-slate-800">{name}</span>
-          <span className="block text-[11px] text-slate-500">{roleLabel}</span>
+          <span className="block text-sm font-medium text-white">{name}</span>
+          <span className="block text-[11px] text-neutral-400">{roleLabel}</span>
         </span>
-        <ChevronDown className="h-4 w-4 text-slate-400" />
+        <ChevronDown className="h-4 w-4 text-neutral-400" />
       </button>
       {open && (
         <div className="absolute right-0 z-[1100] mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">

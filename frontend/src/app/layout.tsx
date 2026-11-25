@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'RideFlow — Đặt xe nhanh, giá minh bạch', template: '%s · RideFlow' },
+  title: { default: 'Gogo — Đặt xe nhanh, giá minh bạch', template: '%s · Gogo' },
   description: 'Đặt xe máy và ô tô trong vài giây. Giá cước tính trước, theo dõi chuyến theo thời gian thực.',
 };
 

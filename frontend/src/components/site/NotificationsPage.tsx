@@ -27,7 +27,7 @@ export default async function NotificationsPage({ tripHref }: { tripHref: string
           padded={false}
           title={
             <span className="flex items-center gap-2">
-              <Megaphone className="h-4 w-4 text-brand-600" /> Tin từ RideFlow
+              <Megaphone className="h-4 w-4 text-brand-600" /> Tin từ Gogo
             </span>
           }
         >

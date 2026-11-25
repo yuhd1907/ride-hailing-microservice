@@ -28,20 +28,20 @@ const DRIVER_NAV = [
 export default function SiteHeader({ user }: { user: SessionUser | null }) {
   const nav = user?.role === 'ROLE_DRIVER' ? DRIVER_NAV : user?.role === 'ROLE_PASSENGER' ? PASSENGER_NAV : null;
   return (
-    <header className="sticky top-0 z-[1000] border-b border-slate-200 bg-white/95 backdrop-blur">
+    <header className="sticky top-0 z-[1000] bg-black">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6">
-        <Logo href={user ? homeOf(user.role) : '/'} />
+        <Logo href={user ? homeOf(user.role) : '/'} light />
         {nav ? (
           <PortalNav items={nav} />
         ) : (
-          <nav className="hidden flex-1 items-center gap-6 text-sm text-slate-600 md:flex">
-            <Link href="/#dich-vu" className="hover:text-slate-900">
+          <nav className="hidden flex-1 items-center gap-6 text-sm font-medium text-neutral-300 md:flex">
+            <Link href="/#dich-vu" className="hover:text-white">
               Dịch vụ
             </Link>
-            <Link href="/#cach-dat-xe" className="hover:text-slate-900">
+            <Link href="/#cach-dat-xe" className="hover:text-white">
               Cách đặt xe
             </Link>
-            <Link href="/#tai-xe" className="hover:text-slate-900">
+            <Link href="/#tai-xe" className="hover:text-white">
               Trở thành tài xế
             </Link>
           </nav>
@@ -62,10 +62,10 @@ export default function SiteHeader({ user }: { user: SessionUser | null }) {
             />
           ) : (
             <>
-              <Link href="/dang-nhap" className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+              <Link href="/dang-nhap" className="rounded-full px-4 py-2 text-sm font-medium text-white hover:bg-white/10">
                 Đăng nhập
               </Link>
-              <Link href="/dang-ky" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              <Link href="/dang-ky" className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-neutral-200">
                 Đăng ký
               </Link>
             </>

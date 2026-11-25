@@ -99,7 +99,7 @@ export default function NotificationBell({ userId, href, tripHref }: { userId: s
     <>
       <Link
         href={href}
-        className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
+        className="relative flex h-10 w-10 items-center justify-center rounded-full text-neutral-300 hover:bg-white/10 hover:text-white"
         aria-label={unread ? `Thông báo, ${unread} chưa đọc` : 'Thông báo'}
       >
         <Bell className="h-5 w-5" />

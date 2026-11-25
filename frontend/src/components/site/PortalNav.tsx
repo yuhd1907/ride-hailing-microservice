@@ -15,8 +15,8 @@ export default function PortalNav({ items }: { items: { href: string; label: str
             key={item.href}
             href={item.href}
             className={clsx(
-              'whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              active ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+              'whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium transition-colors',
+              active ? 'bg-white text-black' : 'text-neutral-300 hover:bg-white/10 hover:text-white',
             )}
           >
             {item.label}
