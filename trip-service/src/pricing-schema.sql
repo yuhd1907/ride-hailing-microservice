@@ -16,10 +16,18 @@ CREATE TABLE IF NOT EXISTS fare_rates (
     minimum_fare INTEGER NOT NULL CHECK (minimum_fare > 0)
 );
 INSERT INTO fare_rates VALUES
-    ('MOTORCYCLE', 12000, 10000, 300, 12000),
-    ('CAR_4_SEAT', 20000, 14000, 500, 25000),
-    ('CAR_7_SEAT', 25000, 17000, 600, 30000)
+    ('MOTORCYCLE', 10000, 4000, 200, 12000),
+    ('CAR_4_SEAT', 18000, 8500, 300, 25000),
+    ('CAR_7_SEAT', 22000, 10500, 350, 30000)
 ON CONFLICT DO NOTHING;
+-- Hạ bảng giá về gần giá thị trường: DB tạo trước đó còn giữ đúng giá mặc định cũ thì cập nhật;
+-- dòng đã được chỉnh tay (khác giá mặc định cũ) giữ nguyên.
+UPDATE fare_rates SET base_fare = 10000, per_km = 4000, per_minute = 200
+    WHERE vehicle_type = 'MOTORCYCLE' AND (base_fare, per_km, per_minute, minimum_fare) = (12000, 10000, 300, 12000);
+UPDATE fare_rates SET base_fare = 18000, per_km = 8500, per_minute = 300
+    WHERE vehicle_type = 'CAR_4_SEAT' AND (base_fare, per_km, per_minute, minimum_fare) = (20000, 14000, 500, 25000);
+UPDATE fare_rates SET base_fare = 22000, per_km = 10500, per_minute = 350
+    WHERE vehicle_type = 'CAR_7_SEAT' AND (base_fare, per_km, per_minute, minimum_fare) = (25000, 17000, 600, 30000);
 
 CREATE TABLE IF NOT EXISTS pricing_rules (
     id TEXT PRIMARY KEY CHECK (id = 'default'),

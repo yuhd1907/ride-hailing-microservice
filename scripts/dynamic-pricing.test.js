@@ -61,7 +61,7 @@ test('dynamic pricing: real PostgreSQL schema, quotes, worker and HTTP payment f
   await t.test('time boundaries use Viet Nam timezone; minimum, rounding, calendar and zones', () => {
     const route = { distanceKm: 5, durationMinutes: 10 }, neutral = { multiplier: 1 }, clear = { raining: false };
     const price = at => calculate(policy, rate, pickup, route, neutral, clear, new Date(at));
-    assert.equal(price('2026-11-23T05:00:00Z').fareAmount, 65000);
+    assert.equal(price('2026-11-23T05:00:00Z').fareAmount, 32000);
     for (const [at, multiplier] of [
       ['2026-11-22T23:59:59Z', 1], ['2026-11-23T00:00:00Z', 1.2], ['2026-11-23T02:00:00Z', 1],
       ['2026-11-23T10:00:00Z', 1.2], ['2026-11-23T12:00:00Z', 1],
@@ -90,12 +90,12 @@ test('dynamic pricing: real PostgreSQL schema, quotes, worker and HTTP payment f
 
   await t.test('quotes ignore client money, bind owner/route/type and expire at the exact boundary', async () => {
     const quote = await pricing.quote(owner, { ...body, fareAmount: 1, surgeMultiplier: 100, estimatedDistance: 999 }, uuid());
-    assert.equal(quote.fareAmount, 65000);
+    assert.equal(quote.fareAmount, 32000);
     assert.equal(quote.estimatedDuration, 10);
     assert.equal(Date.parse(quote.expiresAt) - Date.parse(quote.createdAt), 120000);
     assert.equal(quote.surge.status, 'warming_up');
     assert.ok(quote.notices.includes('SURGE_WARMING_UP'));
-    assert.equal((await pricing.lockQuote(db, quote.quoteId, owner, body)).snapshot.fareAmount, 65000);
+    assert.equal((await pricing.lockQuote(db, quote.quoteId, owner, body)).snapshot.fareAmount, 32000);
     await assert.rejects(pricing.lockQuote(db, quote.quoteId, uuid()), { status: 404 });
     await assert.rejects(pricing.lockQuote(db, quote.quoteId, owner, { ...body, vehicleType: 'CAR_4_SEAT' }), { status: 409 });
     await assert.rejects(pricing.lockQuote(db, quote.quoteId, owner, { ...body, destination: pickup }), { status: 409 });
@@ -121,7 +121,7 @@ test('dynamic pricing: real PostgreSQL schema, quotes, worker and HTTP payment f
     assert.equal(quote.surge.demand, 2);
     assert.equal(quote.surge.availableDrivers, 1);
     assert.equal(quote.breakdown.multipliers.surge, 1.5);
-    assert.equal(quote.fareAmount, 98000);
+    assert.equal(quote.fareAmount, 48000);
     const countQueries = queries.filter(q => q === DEMAND_SQL).length;
     await pricing.quote(owner, body);
     await pricing.refreshSurge(); // Fresh cache is not re-counted by another worker.
@@ -137,12 +137,22 @@ test('dynamic pricing: real PostgreSQL schema, quotes, worker and HTTP payment f
     assert.equal((await pricing.quote(owner, body)).surge.status, 'warming_up');
   });
 
+  await t.test('startup lowers rows still on the old default fare table, keeps manually tuned rows', async () => {
+    const row = type => pg.query('SELECT base_fare, per_km, per_minute, minimum_fare FROM fare_rates WHERE vehicle_type=$1', [type]).then(r => r.rows[0]);
+    await pg.query("UPDATE fare_rates SET base_fare=12000, per_km=10000, per_minute=300 WHERE vehicle_type='MOTORCYCLE'");
+    await pg.query("UPDATE fare_rates SET per_km=9000 WHERE vehicle_type='CAR_4_SEAT'");
+    await pricing.initialize();
+    assert.deepEqual(await row('MOTORCYCLE'), { base_fare: 10000, per_km: 4000, per_minute: 200, minimum_fare: 12000 });
+    assert.equal((await row('CAR_4_SEAT')).per_km, 9000);
+    await pg.query("UPDATE fare_rates SET per_km=8500 WHERE vehicle_type='CAR_4_SEAT'");
+  });
+
   await t.test('DB rule updates change new quotes while old snapshots retain their fare', async () => {
     const old = await pricing.quote(owner, body);
     await pg.query("UPDATE fare_rates SET per_km=12000 WHERE vehicle_type='MOTORCYCLE'");
     clock = new Date(clock.getTime() + 31000);
     const fresh = await pricing.quote(owner, body);
-    assert.equal(fresh.fareAmount, 75000);
+    assert.equal(fresh.fareAmount, 72000);
     assert.notEqual(fresh.pricingRevision, old.pricingRevision);
     assert.equal((await pricing.lockQuote(db, old.quoteId, owner)).snapshot.fareAmount, old.fareAmount);
     await pricing.initialize();
@@ -207,9 +217,9 @@ test('dynamic pricing: real PostgreSQL schema, quotes, worker and HTTP payment f
       await saga.payment(payment);
       assert.equal((await pg.query('SELECT status FROM trips WHERE "tripId"=$1', [trip.tripId])).rows[0].status, 'CONFIRMED');
       const car = await call('/trips/estimate', { ...body, vehicleType: 'CAR_4_SEAT' });
-      assert.equal(car.data.fareAmount, 95000);
+      assert.equal(car.data.fareAmount, 64000);
       assert.equal((await call('/trips', { quoteId: car.data.quoteId })).data.vehicleType, 'CAR_4_SEAT');
-      assert.equal((await call('/trips/estimate', { ...body, vehicleType: 'CAR_7_SEAT' })).data.fareAmount, 116000);
+      assert.equal((await call('/trips/estimate', { ...body, vehicleType: 'CAR_7_SEAT' })).data.fareAmount, 78000);
       assert.equal((await call('/trips', body)).status, 201); // Legacy direct booking.
     } finally { await new Promise(resolve => server.close(resolve)); }
   });

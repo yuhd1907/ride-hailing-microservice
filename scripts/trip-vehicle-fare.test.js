@@ -52,9 +52,9 @@ test('pricing: volume cũ có fare_rates của rates.js được đổi tên; b�
   const legacy = await pg.query('SELECT "vehicleType" FROM fare_rates_legacy');
   assert.deepEqual(legacy.rows, [{ vehicleType: 'MOTORCYCLE' }], 'dữ liệu cũ được giữ trong fare_rates_legacy');
   assert.deepEqual(await pricing.rates(), [
-    { vehicleType: 'MOTORCYCLE', displayName: 'Xe máy', seats: 1, baseFare: 12000, perKm: 10000, perMinute: 300, minimumFare: 12000 },
-    { vehicleType: 'CAR_4_SEAT', displayName: 'Ô tô 4 chỗ', seats: 4, baseFare: 20000, perKm: 14000, perMinute: 500, minimumFare: 25000 },
-    { vehicleType: 'CAR_7_SEAT', displayName: 'Ô tô 7 chỗ', seats: 7, baseFare: 25000, perKm: 17000, perMinute: 600, minimumFare: 30000 },
+    { vehicleType: 'MOTORCYCLE', displayName: 'Xe máy', seats: 1, baseFare: 10000, perKm: 4000, perMinute: 200, minimumFare: 12000 },
+    { vehicleType: 'CAR_4_SEAT', displayName: 'Ô tô 4 chỗ', seats: 4, baseFare: 18000, perKm: 8500, perMinute: 300, minimumFare: 25000 },
+    { vehicleType: 'CAR_7_SEAT', displayName: 'Ô tô 7 chỗ', seats: 7, baseFare: 22000, perKm: 10500, perMinute: 350, minimumFare: 30000 },
   ]);
   const car = await pricing.quote(uuid(), { pickup, destination, vehicleType: 'CAR_4_SEAT' });
   assert.equal(car.vehicleType, 'CAR_4_SEAT');
