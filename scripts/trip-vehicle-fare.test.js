@@ -92,7 +92,7 @@ async function tripHarness() {
     const placeholders = Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])));
     assert.equal(placeholders, args.length, `Câu SQL có ${placeholders} placeholder nhưng truyền ${args.length} tham số: ${sql}`);
     if (sql.startsWith('INSERT INTO trips')) {
-      const trip = { tripId: args[0], passengerId: args[1], pickup: args[2], destination: args[3], estimatedDistance: args[4], fare: args[5], sagaId: args[6], vehicleType: args[7], paymentMethod: args[11], noteForDriver: args[15], status: 'REQUESTED', driverId: null, paymentId: null, version: 0, rejectedDriverIds: [], createdAt: stamp() };
+      const trip = { tripId: args[0], passengerId: args[1], pickup: args[2], destination: args[3], estimatedDistance: args[4], fare: args[5], sagaId: args[6], vehicleType: args[7], paymentMethod: args[11], noteForDriver: args[15], routePolyline: args[16] ?? null, status: 'REQUESTED', driverId: null, paymentId: null, version: 0, rejectedDriverIds: [], createdAt: stamp() };
       trips.set(trip.tripId, trip);
       return { rows: [{ ...trip }], rowCount: 1 };
     }
@@ -324,6 +324,22 @@ test('HTTP: ghi chú cho tài xế được làm sạch, tối đa 200 ký tự'
     assert.equal((await h.call('/trips', rider, { pickup, destination })).data.noteForDriver, null);
     assert.equal((await h.call('/trips', rider, { pickup, destination, note: 'x'.repeat(201) })).data.error, 'Note is too long');
     assert.equal((await h.call('/trips', rider, { pickup, destination, note: 42 })).status, 400);
+  } finally { await h.close(); }
+});
+
+test('HTTP: tuyến khách chọn chỉ nhận polyline hợp lệ, tối đa 20.000 ký tự', async () => {
+  const h = await tripHarness();
+  const rider = passenger();
+  try {
+    const polyline = '_p~iF~ps|U_ulLnnqC_mqNvxq`@';
+    const chosen = await h.call('/trips', rider, { pickup, destination, routePolyline: polyline });
+    assert.equal(chosen.status, 201);
+    assert.equal(chosen.data.routePolyline, polyline);
+    assert.equal((await h.call('/trips', rider, { pickup, destination })).data.routePolyline, null);
+    assert.equal((await h.call('/trips', rider, { pickup, destination, routePolyline: 'abc def' })).data.error, 'Invalid route');
+    assert.equal((await h.call('/trips', rider, { pickup, destination, routePolyline: '<script>' })).data.error, 'Invalid route');
+    assert.equal((await h.call('/trips', rider, { pickup, destination, routePolyline: 42 })).status, 400);
+    assert.equal((await h.call('/trips', rider, { pickup, destination, routePolyline: '_'.repeat(20001) })).data.error, 'Route is too long');
   } finally { await h.close(); }
 });
 

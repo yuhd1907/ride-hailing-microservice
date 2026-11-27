@@ -40,6 +40,16 @@ function noteOf(value) {
   return note || null;
 }
 
+// Tuyến khách chọn (Google encoded polyline): chỉ gồm ký tự ASCII 63–126, tối đa 20.000 ký tự.
+// Không ảnh hưởng giá (giá đã khóa theo quote); tài xế dùng để dẫn đường theo đúng tuyến khách chọn.
+const MAX_ROUTE = 20000;
+function routeOf(value) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || !/^[\x3F-\x7E]+$/.test(value)) fail(400, 'Invalid route');
+  if (value.length > MAX_ROUTE) fail(400, 'Route is too long');
+  return value;
+}
+
 async function findTrip(client, id) {
   if (!uuid(id)) fail(400, 'Invalid tripId');
   const { rows: [trip] } = await client.query('SELECT * FROM trips WHERE "tripId"=$1', [id]);
@@ -102,6 +112,7 @@ module.exports = app => {
     if (!PAYMENT_METHODS.includes(paymentMethod)) fail(400, 'Invalid paymentMethod');
     const voucherCode = vouchers.normalize(req.body?.voucherCode);
     const noteForDriver = noteOf(req.body?.note);
+    const routePolyline = routeOf(req.body?.routePolyline);
     // Legacy clients may book directly; server issues a fresh quote for that request.
     // Clients displaying an estimate must send quoteId to lock the displayed fare.
     const quoteId = req.body?.quoteId !== undefined ? req.body.quoteId : (await pricing.quote(riderId, quoteInput(req.body), req.correlationId)).quoteId;
@@ -118,7 +129,7 @@ module.exports = app => {
         discountAmount = discount.discountAmount;
       }
       const fareAmount = originalFare - discountAmount;
-      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId", "vehicleType", "quoteId", "estimatedDuration", "pricingSnapshot", "paymentMethod", "originalFare", "discountAmount", "voucherCode", "noteForDriver") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId, vehicleType, quoteId, estimatedDuration, locked.snapshot, paymentMethod, originalFare, discountAmount, voucherCode, noteForDriver]);
+      const { rows: [row] } = await client.query('INSERT INTO trips ("tripId", "passengerId", pickup, destination, "estimatedDistance", fare, "sagaId", "vehicleType", "quoteId", "estimatedDuration", "pricingSnapshot", "paymentMethod", "originalFare", "discountAmount", "voucherCode", "noteForDriver", "routePolyline") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *', [tripId, riderId, pickup, destination, estimatedDistance, fareAmount, req.correlationId, vehicleType, quoteId, estimatedDuration, locked.snapshot, paymentMethod, originalFare, discountAmount, voucherCode, noteForDriver, routePolyline]);
       if (voucherCode) await vouchers.redeem(client, voucherCode, riderId, tripId);
       await client.query('UPDATE fare_quotes SET trip_id=$2 WHERE quote_id=$1', [quoteId, tripId]);
       await client.query('INSERT INTO trip_status_history ("tripId", new_status, reason) VALUES ($1,$2,$3)', [tripId, 'REQUESTED', 'trip requested']);

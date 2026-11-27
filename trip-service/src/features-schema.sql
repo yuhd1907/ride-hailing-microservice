@@ -11,6 +11,8 @@ ALTER TABLE trips ADD COLUMN IF NOT EXISTS "cancelledBy" TEXT CHECK ("cancelledB
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS "cancelReason" TEXT;
 -- Ghi chú khách gửi tài xế khi đặt xe ("đứng cổng số 2").
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS "noteForDriver" TEXT CHECK (char_length("noteForDriver") <= 200);
+-- Tuyến đường khách chọn khi đặt (Google encoded polyline). Chỉ để tài xế dẫn đường theo; cước không đổi theo tuyến.
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS "routePolyline" TEXT CHECK (char_length("routePolyline") <= 20000);
 CREATE INDEX IF NOT EXISTS trips_rejected_driver_idx ON trips USING GIN ("rejectedDriverIds");
 CREATE INDEX IF NOT EXISTS trips_recent_pickup_idx ON trips ("createdAt" DESC, "vehicleType");
 
