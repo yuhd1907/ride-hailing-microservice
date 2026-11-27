@@ -47,6 +47,8 @@ const MESSAGES: Record<string, string> = {
   'Voucher đã được dùng': 'Bạn đã dùng mã giảm giá này rồi.',
   'Note is too long': 'Ghi chú cho tài xế tối đa 200 ký tự.',
   'Invalid note': 'Ghi chú không hợp lệ.',
+  'Invalid route': 'Tuyến đường không hợp lệ, vui lòng chọn lại tuyến.',
+  'Route is too long': 'Tuyến đường quá dài, vui lòng chọn tuyến khác.',
   'Driver location is not available for this trip': 'Chuyến này không còn theo dõi vị trí tài xế.',
   'Driver has not shared a location yet': 'Tài xế chưa gửi vị trí.',
 };

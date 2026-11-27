@@ -76,6 +76,8 @@ export interface Trip {
   cancelReason?: DriverCancelReason | null;
   /** Ghi chú khách gửi tài xế khi đặt xe. */
   noteForDriver?: string | null;
+  /** Tuyến khách chọn khi đặt (Google encoded polyline); tài xế được dẫn đường theo tuyến này. */
+  routePolyline?: string | null;
   paymentId: string | null;
   sagaId: string | null;
   createdAt: string;

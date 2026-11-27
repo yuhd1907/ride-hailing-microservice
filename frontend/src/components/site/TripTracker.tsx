@@ -17,7 +17,6 @@ import {
   Landmark,
   Loader2,
   MessageSquareText,
-  Navigation,
   Phone,
   RotateCcw,
   Share2,
@@ -33,6 +32,7 @@ import { call } from '@/lib/client';
 import { time, vnd } from '@/lib/format';
 import { useAddressOf } from '@/lib/geo';
 import { CANCELLABLE, coord, DRIVER_CANCEL_REASON, FAILURE_REASON, OPEN_TRIP, PAYMENT_METHOD, PAYMENT_STATUS, RATING_TAG, TRIP_PHASE, TRIP_REASON, TRIP_STATUS, VEHICLE } from '@/lib/labels';
+import { cumulativeMeters, decodePolyline } from '@/lib/polyline';
 import { formatDistance, formatDuration, useRoute } from '@/lib/routes';
 import { gpsErrorMessage, useDriverTracking } from '@/lib/tracking';
 import type {
@@ -49,7 +49,8 @@ import type {
   TripStatus,
   UserProfile,
 } from '@/lib/types';
-import Map, { type MapMarker } from './Map';
+import { NavigationPanel, useTurnByTurn } from './DriverNavigation';
+import Map, { type MapMarker, type MapRoute } from './Map';
 import Pill from './Pill';
 import { PriceBreakdown, PriceReasons } from './PriceBreakdown';
 
@@ -222,8 +223,16 @@ export default function TripTracker({ viewer, initialTrip, initialHistory }: { v
   const motorbike = (trip.vehicleType ?? 'MOTORCYCLE') === 'MOTORCYCLE';
   // Tài xế: dẫn đường từ vị trí hiện tại tới điểm đón (trước khi đón) hoặc tới điểm đến (khách đã lên xe).
   const navTarget = phase === 'ON_BOARD' ? trip.destination : trip.pickup;
-  const { route } = useRoute(trip.pickup, trip.destination);
-  const { route: navRoute } = useRoute(driving && me ? me : null, driving ? navTarget : null);
+  // Tuyến khách chọn lúc đặt thì vẽ đúng tuyến đó; chưa có thì hỏi Google tuyến đề xuất (kèm tình trạng giao thông).
+  const { route } = useRoute(trip.routePolyline ? null : trip.pickup, trip.routePolyline ? null : trip.destination, { vehicleType: trip.vehicleType });
+  // Dẫn đường từng bước; khi đã đón khách thì bám theo tuyến khách chọn.
+  const fix = tracking.fix ? { lat: tracking.fix.lat, lng: tracking.fix.lng } : null;
+  const chosenMeters = useMemo(() => {
+    if (!trip.routePolyline) return null;
+    const cum = cumulativeMeters(decodePolyline(trip.routePolyline));
+    return cum[cum.length - 1] ?? 0;
+  }, [trip.routePolyline]);
+  const nav = useTurnByTurn({ active: driving, fix, target: navTarget, vehicleType: trip.vehicleType, preferred: phase === 'ON_BOARD' ? trip.routePolyline : null });
 
   // Khách theo dõi tài xế của chuyến: Trip Service kiểm tra quyền rồi hỏi Driver Service; làm mới mỗi 5 giây.
   const [driverLoc, setDriverLoc] = useState<DriverLocationInfo | null>(null);
@@ -249,7 +258,11 @@ export default function TripTracker({ viewer, initialTrip, initialHistory }: { v
   const driverCell = driverLoc ? `${driverLoc.position.lat.toFixed(2)},${driverLoc.position.lng.toFixed(2)},${driverLoc.target}` : '';
   const driverAnchor = useMemo(() => (driverLoc ? driverLoc.position : null), [driverCell]); // eslint-disable-line react-hooks/exhaustive-deps
   const passengerTarget = driverLoc?.target === 'DESTINATION' ? trip.destination : trip.pickup;
-  const { route: driverRoute } = useRoute(watching ? driverAnchor : null, watching && driverAnchor ? passengerTarget : null);
+  // Đang chở khách theo tuyến khách chọn thì vẽ luôn tuyến đó, không cần hỏi lại Google.
+  const onChosenRoute = driverLoc?.target === 'DESTINATION' && !!trip.routePolyline;
+  const { route: driverRoute } = useRoute(watching && !onChosenRoute ? driverAnchor : null, watching && driverAnchor && !onChosenRoute ? passengerTarget : null, {
+    vehicleType: trip.vehicleType,
+  });
   const tracked = watching && !!driverLoc;
 
   // Người thân để Trung tâm an toàn liên hệ nhanh (User Service).
@@ -324,6 +337,15 @@ export default function TripTracker({ viewer, initialTrip, initialHistory }: { v
   ];
   const showNav = driving && !!me;
   const gpsProblem = driving ? gpsErrorMessage(tracking.error) : null;
+  // Lộ trình vẽ trên bản đồ: dẫn đường của tài xế › tài xế đang tới (khách theo dõi) › tuyến của chuyến.
+  const shown = showNav ? nav.route : tracked && !onChosenRoute ? driverRoute : null;
+  const mapRoutes: MapRoute[] = shown
+    ? [{ id: 'route', encodedPath: shown.encodedPath, selected: true, speedIntervals: shown.speedIntervals }]
+    : trip.routePolyline && (!tracked || onChosenRoute)
+      ? [{ id: 'route', encodedPath: trip.routePolyline, selected: true }]
+      : route && !tracked
+        ? [{ id: 'route', encodedPath: route.encodedPath, selected: true, speedIntervals: route.speedIntervals }]
+        : [];
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
@@ -333,30 +355,20 @@ export default function TripTracker({ viewer, initialTrip, initialHistory }: { v
             center={trip.pickup}
             markers={markers}
             route={showNav ? [me!, navTarget] : tracked ? [driverLoc!.position, passengerTarget] : [trip.pickup, trip.destination]}
-            routePath={showNav ? navRoute?.encodedPath : tracked ? driverRoute?.encodedPath : route?.encodedPath}
+            routes={mapRoutes}
             fit={showNav ? [me!, navTarget] : tracked ? [driverLoc!.position, passengerTarget] : [trip.pickup, trip.destination]}
           />
         </div>
 
         {driving && (
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-200 bg-brand-50 p-4">
-            <div className="text-sm">
-              <div className="font-semibold text-brand-900">{phase === 'ON_BOARD' ? 'Dẫn đường tới điểm trả khách' : 'Dẫn đường tới điểm đón'}</div>
-              <div className="text-brand-800">
-                {phase === 'ON_BOARD' ? destinationName ?? coord(trip.destination) : pickupName ?? coord(trip.pickup)}
-                {navRoute && ` · ${formatDistance(navRoute.distanceMeters)}, khoảng ${formatDuration(navRoute.durationSeconds)}`}
-              </div>
-              {gpsProblem && <div className="mt-1 text-xs text-amber-700">{gpsProblem}</div>}
-            </div>
-            <a
-              href={mapsUrl(navTarget, motorbike)}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700"
-            >
-              <Navigation className="h-4 w-4" /> Mở Google Maps
-            </a>
-          </section>
+          <NavigationPanel
+            nav={nav}
+            toPickup={phase !== 'ON_BOARD'}
+            targetName={phase === 'ON_BOARD' ? destinationName ?? coord(trip.destination) : pickupName ?? coord(trip.pickup)}
+            mapsHref={mapsUrl(navTarget, motorbike)}
+            waitingForGps={!tracking.fix}
+            gpsProblem={gpsProblem}
+          />
         )}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -423,10 +435,14 @@ export default function TripTracker({ viewer, initialTrip, initialHistory }: { v
           <div className="mt-5 space-y-3 border-t border-slate-100 pt-4 text-sm">
             <Place letter="A" color="bg-brand-600" label="Điểm đón" value={pickupName ?? coord(trip.pickup)} />
             <Place letter="B" color="bg-rose-600" label="Điểm đến" value={destinationName ?? coord(trip.destination)} />
-            {route && (
-              <div className="pl-9 text-xs text-slate-500">
-                Lộ trình {formatDistance(route.distanceMeters)} · khoảng {formatDuration(route.durationSeconds)}
-              </div>
+            {chosenMeters !== null ? (
+              <div className="pl-9 text-xs text-slate-500">Theo tuyến khách chọn khi đặt · {formatDistance(chosenMeters)}</div>
+            ) : (
+              route && (
+                <div className="pl-9 text-xs text-slate-500">
+                  Lộ trình {formatDistance(route.distanceMeters)} · khoảng {formatDuration(route.durationSeconds)}
+                </div>
+              )
             )}
             {trip.noteForDriver && (
               <div className={clsx('flex items-start gap-2 rounded-lg px-3 py-2 text-xs', viewer === 'driver' ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-600')}>

@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { ArrowRight, Banknote, Bike, Car, Hand, Landmark, Loader2, MessageSquareText, Navigation, RefreshCw, Route, Ticket, Users, X } from 'lucide-react';
+import { ArrowRight, Banknote, Bike, Car, CreditCard, Hand, Landmark, Loader2, MessageSquareText, Navigation, RefreshCw, Ticket, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
@@ -9,12 +9,14 @@ import { call } from '@/lib/client';
 import { vnd } from '@/lib/format';
 import { FALLBACK_CENTER, useBrowserLocation, useReverseGeocoder } from '@/lib/geo';
 import { TRIP_STATUS, VEHICLE, VOUCHER_REASON } from '@/lib/labels';
-import { formatDistance, formatDuration, useRoute } from '@/lib/routes';
+import { useRoute } from '@/lib/routes';
 import type { BankAccount, Driver, FareEstimate, FareRate, PaymentMethod, Point, Trip, VehicleType, Voucher } from '@/lib/types';
 import AddressInput from './AddressInput';
 import Map, { type MapMarker } from './Map';
 import Pill from './Pill';
 import { PriceBreakdown, PriceReasons, SurgeBadge } from './PriceBreakdown';
+import Collapsible from './Collapsible';
+import RoutePicker from './RoutePicker';
 
 const SEARCH_RADIUS_KM = 5;
 
@@ -55,6 +57,11 @@ export default function BookingClient({
   const [bank, setBank] = useState<BankAccount | null>(null);
   const [toppingUp, setToppingUp] = useState<number | null>(null);
   const [quoteRound, setQuoteRound] = useState(0);
+  // Các mục thu/mở: loại xe mở sẵn, thanh toán và mã giảm giá thu gọn (tiêu đề vẫn hiện lựa chọn hiện tại).
+  const [open, setOpen] = useState({ vehicle: true, payment: false, voucher: false });
+  const toggle = (key: keyof typeof open) => setOpen(o => ({ ...o, [key]: !o[key] }));
+  const [codeInput, setCodeInput] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
 
   // Voucher còn dùng được (Trip Service) và số dư khả dụng của ngân hàng ảo (Payment Service).
   const loadWallet = useCallback(async () => {
@@ -137,7 +144,7 @@ export default function BookingClient({
     setBooking(true);
     setError(null);
     // Gửi quoteId để khóa đúng giá khách đang thấy (voucher được trừ trên giá đã khóa).
-    const r = await call<Trip>('/trips', { body: { quoteId: chosen.quoteId, pickup, destination, vehicleType, paymentMethod, voucherCode: voucherCode ?? undefined, note: note.trim() || undefined } });
+    const r = await call<Trip>('/trips', { body: { quoteId: chosen.quoteId, pickup, destination, vehicleType, paymentMethod, voucherCode: voucherCode ?? undefined, note: note.trim() || undefined, routePolyline: selectedRoute?.encodedPath } });
     if (r.ok && r.data) {
       router.push(`/khach-hang/chuyen-di/${r.data.tripId}`);
       router.refresh();
@@ -155,7 +162,11 @@ export default function BookingClient({
     ? rates
     : (estimate?.options ?? []).map(o => ({ vehicleType: o.vehicleType, displayName: o.displayName, seats: o.seats, baseFare: 0, perKm: 0 }));
 
-  const { route, loading: routing } = useRoute(pickup, destination);
+  // Tuyến đề xuất + tối đa 2 tuyến thay thế, kèm tình trạng giao thông; xe máy và ô tô có tuyến khác nhau.
+  const { routes, loading: routing } = useRoute(pickup, destination, { vehicleType, alternatives: true });
+  const [routeIndex, setRouteIndex] = useState(0);
+  useEffect(() => setRouteIndex(0), [routes]);
+  const selectedRoute = routes[routeIndex] ?? routes[0] ?? null;
   // Báo giá của loại xe đang chọn (Trip Service trả giá của mọi loại xe trong một lần gọi).
   const chosen = estimate?.options?.find(o => o.vehicleType === vehicleType) ?? null;
   const selectedNearby = drivers?.filter(d => d.vehicleType === vehicleType) ?? null;
@@ -163,6 +174,20 @@ export default function BookingClient({
   // Trả bằng ngân hàng thì số dư khả dụng phải đủ giá cước; Payment cũng kiểm tra lại khi khóa tiền.
   const shortfall = paymentMethod === 'BANK' && bank && chosen ? Math.max(0, Number(chosen.fareAmount) - Number(bank.available)) : 0;
   const shortOfFunds = shortfall > 0;
+  const chosenRate = vehicles.find(r => r.vehicleType === vehicleType);
+
+  // Mã khách tự nhập: đối chiếu với danh sách mã còn dùng được (/trips/vouchers). Trip Service kiểm tra
+  // lại đúng danh sách này khi báo giá và khi đặt, nên giá sau giảm và lý do không áp dụng vẫn do server quyết định.
+  const applyCode = () => {
+    const code = codeInput.trim().toUpperCase();
+    if (!code) return;
+    if (vouchers === null) return setCodeError('Đang tải mã giảm giá, vui lòng thử lại sau giây lát.');
+    const found = vouchers.find(v => v.code === code);
+    if (!found) return setCodeError(`Mã ${code} không tồn tại hoặc bạn đã dùng.`);
+    setVoucherCode(found.code);
+    setCodeInput('');
+    setCodeError(null);
+  };
 
   // Tài xế rảnh quanh điểm đón (Driver Service trả kèm vị trí GPS gần nhất): xe máy / ô tô trên bản đồ.
   const nearbyMarkers: MapMarker[] = (drivers ?? []).flatMap(d =>
@@ -244,103 +269,112 @@ export default function BookingClient({
             onClear={() => setDestination(null)}
           />
         </div>
-        {pickup && destination && (
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
-            <Route className="h-5 w-5 shrink-0 text-brand-600" />
-            {routing && !route ? (
-              <span className="text-slate-500">Đang tìm lộ trình…</span>
-            ) : route ? (
-              <span className="text-slate-700">
-                Lộ trình <strong className="text-slate-900">{formatDistance(route.distanceMeters)}</strong> · khoảng{' '}
-                <strong className="text-slate-900">{formatDuration(route.durationSeconds)}</strong> theo giao thông hiện tại
-              </span>
-            ) : (
-              <span className="text-slate-500">Không tìm được lộ trình lái xe giữa hai điểm này.</span>
-            )}
-          </div>
-        )}
+        {pickup && destination && <RoutePicker routes={routes} selected={routeIndex} onSelect={setRouteIndex} loading={routing} />}
         {(pickup || destination) && (
           <p className="flex items-center gap-1.5 px-1 text-xs text-slate-500">
             <Hand className="h-3.5 w-3.5" /> Kéo ghim trên bản đồ nếu cần chỉnh vị trí đón chính xác hơn.
           </p>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between px-1 text-sm">
-            <span className="font-semibold text-slate-900">Chọn loại xe</span>
-            <span className="flex items-center gap-2 text-xs text-slate-500">
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 pb-4 shadow-sm">
+          <Collapsible
+            title="Chọn loại xe"
+            icon={<Car className="h-4 w-4" />}
+            open={open.vehicle}
+            onToggle={() => toggle('vehicle')}
+            summary={chosenRate && (
+              <span className="text-slate-700">
+                {chosenRate.displayName}
+                {chosen && <strong className="text-slate-900"> · {vnd(chosen.fareAmount)}</strong>}
+              </span>
+            )}
+          >
+            <div className="mb-2 flex items-center justify-end gap-2 px-1 text-xs text-slate-500">
               <Users className="h-3.5 w-3.5" /> tài xế sẵn sàng trong {SEARCH_RADIUS_KM} km
               {pickup && (
                 <button type="button" onClick={() => void loadDrivers()} className="text-slate-400 hover:text-slate-600" aria-label="Tải lại">
                   <RefreshCw className="h-3.5 w-3.5" />
                 </button>
               )}
-            </span>
-          </div>
-          <div className="space-y-2" role="radiogroup" aria-label="Loại xe">
-            {vehicles.map(rate => {
-              const option = estimate?.options?.find(o => o.vehicleType === rate.vehicleType);
-              const nearby = drivers?.filter(d => d.vehicleType === rate.vehicleType) ?? null;
-              const nearest = nearby?.[0];
-              const selected = vehicleType === rate.vehicleType;
-              const Icon = rate.vehicleType === 'MOTORCYCLE' ? Bike : Car;
-              return (
-                <button
-                  key={rate.vehicleType}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => setVehicleType(rate.vehicleType)}
-                  className={clsx(
-                    'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition',
-                    selected ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50',
-                  )}
-                >
-                  <span className={clsx('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', selected ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600')}>
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-slate-900">
-                      {rate.displayName} <span className="font-normal text-slate-400">· {rate.seats} chỗ</span>
-                    </span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {!pickup
-                        ? `${vnd(rate.baseFare)} mở cửa + ${vnd(rate.perKm)}/km`
-                        : nearby === null
-                          ? 'Đang tìm tài xế…'
-                          : nearby.length === 0
-                            ? 'Chưa có tài xế gần bạn'
-                            : `${nearby.length} tài xế · gần nhất ${nearest?.distance != null ? `${nearest.distance.toFixed(1)} km` : ''}`}
-                    </span>
-                  </span>
-                  <span className="text-right">
-                    {estimating ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                    ) : option ? (
-                      <>
-                        <span className="block text-base font-bold text-slate-900">{vnd(option.fareAmount)}</span>
-                        {!!option.discountAmount && <span className="block text-xs text-slate-400 line-through">{vnd(option.originalFare)}</span>}
-                        <SurgeBadge snapshot={option} />
-                      </>
-                    ) : (
-                      <span className="block text-xs text-slate-400">—</span>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
-            {vehicles.length === 0 && <p className="px-1 text-sm text-slate-500">Chưa tải được bảng giá.</p>}
-          </div>
-          {chosen && (
-            <div className="mt-3 space-y-2">
-              <PriceReasons snapshot={chosen} />
-              <PriceBreakdown snapshot={{ ...chosen, fareAmount: chosen.originalFare ?? chosen.fareAmount }} title={`Vì sao giá ${vnd(chosen.originalFare ?? chosen.fareAmount)}?`} />
-              <div className="px-1 text-xs text-slate-500">Giá được giữ nguyên khi bạn bấm đặt, kể cả nếu hệ số thay đổi sau đó.</div>
             </div>
-          )}
+            <div className="space-y-2" role="radiogroup" aria-label="Loại xe">
+              {vehicles.map(rate => {
+                const option = estimate?.options?.find(o => o.vehicleType === rate.vehicleType);
+                const nearby = drivers?.filter(d => d.vehicleType === rate.vehicleType) ?? null;
+                const nearest = nearby?.[0];
+                const selected = vehicleType === rate.vehicleType;
+                const Icon = rate.vehicleType === 'MOTORCYCLE' ? Bike : Car;
+                return (
+                  <button
+                    key={rate.vehicleType}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setVehicleType(rate.vehicleType)}
+                    className={clsx(
+                      'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition',
+                      selected ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-500' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50',
+                    )}
+                  >
+                    <span className={clsx('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', selected ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600')}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-slate-900">
+                        {rate.displayName} <span className="font-normal text-slate-400">· {rate.seats} chỗ</span>
+                      </span>
+                      <span className="block truncate text-xs text-slate-500">
+                        {!pickup
+                          ? `${vnd(rate.baseFare)} mở cửa + ${vnd(rate.perKm)}/km`
+                          : nearby === null
+                            ? 'Đang tìm tài xế…'
+                            : nearby.length === 0
+                              ? 'Chưa có tài xế gần bạn'
+                              : `${nearby.length} tài xế · gần nhất ${nearest?.distance != null ? `${nearest.distance.toFixed(1)} km` : ''}`}
+                      </span>
+                    </span>
+                    <span className="text-right">
+                      {estimating ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                      ) : option ? (
+                        <>
+                          <span className="block text-base font-bold text-slate-900">{vnd(option.fareAmount)}</span>
+                          {!!option.discountAmount && <span className="block text-xs text-slate-400 line-through">{vnd(option.originalFare)}</span>}
+                          <SurgeBadge snapshot={option} />
+                        </>
+                      ) : (
+                        <span className="block text-xs text-slate-400">—</span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+              {vehicles.length === 0 && <p className="px-1 text-sm text-slate-500">Chưa tải được bảng giá.</p>}
+            </div>
+            {chosen && (
+              <div className="mt-3 space-y-2">
+                <PriceReasons snapshot={chosen} />
+                <PriceBreakdown snapshot={{ ...chosen, fareAmount: chosen.originalFare ?? chosen.fareAmount }} title={`Vì sao giá ${vnd(chosen.originalFare ?? chosen.fareAmount)}?`} />
+                <div className="px-1 text-xs text-slate-500">Giá được giữ nguyên khi bạn bấm đặt, kể cả nếu hệ số thay đổi sau đó.</div>
+              </div>
+            )}
+          </Collapsible>
 
-          <div className="mt-5 border-t border-slate-100 pt-4">
-            <div className="mb-2 px-1 text-sm font-semibold text-slate-900">Thanh toán</div>
+          <Collapsible
+            title="Thanh toán"
+            icon={<CreditCard className="h-4 w-4" />}
+            open={open.payment}
+            onToggle={() => toggle('payment')}
+            summary={
+              paymentMethod === 'CASH' ? (
+                <span className="text-slate-700">Tiền mặt</span>
+              ) : (
+                <span className={shortOfFunds ? 'text-red-600' : 'text-slate-700'}>
+                  Ngân hàng{bank && <> · {vnd(bank.available)}</>}
+                </span>
+              )
+            }
+          >
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Phương thức thanh toán">
               <MethodButton
                 selected={paymentMethod === 'BANK'}
@@ -351,46 +385,98 @@ export default function BookingClient({
               />
               <MethodButton selected={paymentMethod === 'CASH'} onClick={() => setPaymentMethod('CASH')} icon={<Banknote className="h-4 w-4" />} title="Tiền mặt" detail="Trả tài xế khi đến nơi" />
             </div>
-            {shortOfFunds && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <div className="font-semibold">Số dư ngân hàng không đủ</div>
-                <div className="mt-0.5">
-                  Khả dụng {vnd(bank?.available)}, chuyến này cần {vnd(chosen?.fareAmount)} (thiếu {vnd(shortfall)}). Nạp thêm tiền hoặc chọn thanh toán tiền mặt.
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[Math.ceil(shortfall / 10000) * 10000, 200000, 500000]
-                    .filter((v, i, all) => all.indexOf(v) === i && v >= 1000 && v <= 5000000)
-                    .map(amount => (
-                      <button
-                        key={amount}
-                        type="button"
-                        onClick={() => void topUp(amount)}
-                        disabled={toppingUp !== null}
-                        className="flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
-                      >
-                        {toppingUp === amount && <Loader2 className="h-3 w-3 animate-spin" />}
-                        Nạp {vnd(amount)}
-                      </button>
-                    ))}
-                  <button type="button" onClick={() => setPaymentMethod('CASH')} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700 underline">
-                    Dùng tiền mặt
-                  </button>
-                  <Link href="/khach-hang/ngan-hang" className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700 underline">
-                    Mở ngân hàng
-                  </Link>
-                </div>
-              </div>
-            )}
             {paymentMethod === 'BANK' && bank && !shortOfFunds && chosen && (
               <p className="mt-2 px-1 text-xs text-slate-500">Khi đặt, {vnd(chosen.fareAmount)} được khóa trong tài khoản và chỉ trừ khi chuyến hoàn thành; hủy chuyến sẽ mở khóa lại.</p>
             )}
-          </div>
+          </Collapsible>
+          {/* Thiếu số dư: luôn hiện kể cả khi mục Thanh toán đang thu gọn. */}
+          {shortOfFunds && (
+            <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="font-semibold">Số dư ngân hàng không đủ</div>
+              <div className="mt-0.5">
+                Khả dụng {vnd(bank?.available)}, chuyến này cần {vnd(chosen?.fareAmount)} (thiếu {vnd(shortfall)}). Nạp thêm tiền hoặc chọn thanh toán tiền mặt.
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[Math.ceil(shortfall / 10000) * 10000, 200000, 500000]
+                  .filter((v, i, all) => all.indexOf(v) === i && v >= 1000 && v <= 5000000)
+                  .map(amount => (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => void topUp(amount)}
+                      disabled={toppingUp !== null}
+                      className="flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                    >
+                      {toppingUp === amount && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Nạp {vnd(amount)}
+                    </button>
+                  ))}
+                <button type="button" onClick={() => setPaymentMethod('CASH')} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700 underline">
+                  Dùng tiền mặt
+                </button>
+                <Link href="/khach-hang/ngan-hang" className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700 underline">
+                  Mở ngân hàng
+                </Link>
+              </div>
+            </div>
+          )}
 
-          <div className="mt-4">
-            <div className="mb-2 flex items-center justify-between px-1 text-sm">
-              <span className="font-semibold text-slate-900">Mã giảm giá</span>
+          <Collapsible
+            title="Mã giảm giá"
+            icon={<Ticket className="h-4 w-4" />}
+            open={open.voucher}
+            onToggle={() => toggle('voucher')}
+            summary={
+              voucherCode ? (
+                <span className={clsx('font-mono font-semibold', chosen?.voucherApplicable === false ? 'text-amber-700' : 'text-emerald-700')}>
+                  {voucherCode}
+                  {chosen?.voucherApplicable && <> · −{vnd(chosen.discountAmount)}</>}
+                  {chosen?.voucherApplicable === false && <span className="font-sans font-normal"> · không áp dụng</span>}
+                </span>
+              ) : (
+                <span className="text-slate-500">{vouchers?.length ? `${vouchers.length} mã có thể dùng` : 'Nhập mã'}</span>
+              )
+            }
+          >
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                applyCode();
+              }}
+              className="flex gap-2"
+            >
+              <div className="relative flex-1">
+                <Ticket className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={codeInput}
+                  onChange={e => {
+                    setCodeInput(e.target.value.toUpperCase().slice(0, 30));
+                    setCodeError(null);
+                  }}
+                  placeholder="Nhập mã giảm giá"
+                  aria-label="Nhập mã giảm giá"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={clsx(
+                    'h-10 w-full rounded-xl border pl-9 pr-3 font-mono text-sm uppercase outline-none placeholder:font-sans placeholder:normal-case focus:ring-2',
+                    codeError ? 'border-red-300 focus:ring-red-100' : 'border-slate-200 focus:border-brand-400 focus:ring-brand-100',
+                  )}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!codeInput.trim()}
+                className="h-10 shrink-0 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                Áp dụng
+              </button>
+            </form>
+            {codeError && <p className="mt-1.5 px-1 text-xs text-red-600">{codeError}</p>}
+
+            <div className="mb-2 mt-4 flex items-center justify-between px-1 text-xs">
+              <span className="font-medium text-slate-500">Mã của bạn</span>
               {voucherCode && (
-                <button type="button" onClick={() => setVoucherCode(null)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800">
+                <button type="button" onClick={() => setVoucherCode(null)} className="flex items-center gap-1 text-slate-500 hover:text-slate-800">
                   <X className="h-3.5 w-3.5" /> Bỏ chọn
                 </button>
               )}
@@ -432,9 +518,9 @@ export default function BookingClient({
                   : `${VOUCHER_REASON[chosen.voucherReason ?? ''] ?? 'Mã không áp dụng được'}. Chọn loại xe khác hoặc bỏ mã.`}
               </p>
             )}
-          </div>
+          </Collapsible>
 
-          <div className="mt-4">
+          <div className="mt-2 border-t border-slate-100 pt-4">
             <label htmlFor="note-for-driver" className="mb-2 flex items-center justify-between px-1 text-sm">
               <span className="flex items-center gap-1.5 font-semibold text-slate-900">
                 <MessageSquareText className="h-4 w-4 text-slate-400" /> Ghi chú cho tài xế
@@ -481,7 +567,8 @@ export default function BookingClient({
           center={FALLBACK_CENTER}
           markers={markers}
           route={pickup && destination ? [pickup, destination] : null}
-          routePath={route?.encodedPath}
+          routes={routes.map((r, i) => ({ id: String(i), encodedPath: r.encodedPath, selected: r === selectedRoute, speedIntervals: r.speedIntervals }))}
+          onRouteClick={id => setRouteIndex(Number(id))}
           fit={fitPoints}
           onMarkerDragEnd={(id, p) => void moved(id, p)}
         />
